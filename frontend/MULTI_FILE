@@ -1,0 +1,109 @@
+// components/home-toolbar.tsx
+import React from 'react';
+
+const HomeToolbar: React.FC = () => {
+  return (
+    <div>
+      <img
+        src="/images/home-toolbar-ref.png"
+        alt="reference toolbar"
+        className="sr-only"
+      />
+    </div>
+  );
+};
+
+export default HomeToolbar;
+
+// app/(dashboard)/mentions/page.tsx
+import React from 'react';
+import { HomeToolbar } from '@/components/home-toolbar';
+
+const MentionsPage: React.FC = () => {
+  return (
+    <div className="container mx-auto">
+      <h1>Mentions</h1>
+      <div className="mb-4">
+        <HomeToolbar />
+      </div>
+      {/* rest of code here */}
+    </div>
+  );
+};
+
+export default MentionsPage;
+
+// app/(dashboard)/insights/page.tsx
+import React from 'react';
+import { Tabs } from 'react-tabs';
+import { HomeToolbar } from '@/components/home-toolbar';
+
+const InsightsPage: React.FC = () => {
+  return (
+    <div className="container mx-auto">
+      <div className="flex items-start">
+        {/* search and header components here */}
+      </div>
+      <HomeToolbar />
+      <Tabs>
+        {/* tab components here */}
+      </Tabs>
+      {/* rest of code here */}
+    </div>
+  );
+};
+
+export default InsightsPage;
+
+// app/(dashboard)/alerts/page.tsx
+import React from 'react';
+import { HomeToolbar } from '@/components/home-toolbar';
+
+const AlertsPage: React.FC = () => {
+  return (
+    <div className="container mx-auto">
+      <div>
+        <h1 className="text-2xl font-bold">Alerts</h1>
+        {/* other heading components here */}
+      </div>
+      <div className="mb-4">
+        <HomeToolbar />
+      </div>
+      {/* rest of code here */}
+    </div>
+  );
+};
+
+export default AlertsPage;
+
+// app/(dashboard)/industry/page.tsx
+import React from 'react';
+import { HomeToolbar } from '@/components/home-toolbar';
+
+const IndustryPage: React.FC = () => {
+  return (
+    <div className="space-y-6">
+      <HomeToolbar />
+      {/* rest of code here */}
+    </div>
+  );
+};
+
+export default IndustryPage;
+
+// app/(dashboard)/improve/page.tsx
+import React from 'react';
+import { HomeToolbar } from '@/components/home-toolbar';
+
+const ImprovePage: React.FC = () => {
+  return (
+    <div className="container mx-auto">
+      <div className="mb-4">
+        <HomeToolbar />
+      </div>
+      {/* section heading and other components here */}
+    </div>
+  );
+};
+
+export default ImprovePage;
