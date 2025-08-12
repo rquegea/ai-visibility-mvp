@@ -1,196 +1,275 @@
-"use client"
+'use client'
 
-import { useState } from 'react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { useState, useEffect } from 'react'
+import { AlertTriangle, CheckCircle2, Clock, Bell } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Switch } from '@/components/ui/switch'
-import { Label } from '@/components/ui/label'
-import { Input } from '@/components/ui/input'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { AlertTriangle, CheckCircle, Clock, Settings } from 'lucide-react'
+import { useSearchParams } from 'next/navigation'
 
-// Mock data
-const alerts = [
-  {
-    id: 1,
-    title: 'Negative sentiment spike detected',
-    description: 'Negative mentions increased by 150% in the last 2 hours',
-    severity: 'high',
-    timestamp: '2024-01-07 14:30',
-    resolved: false,
-    source: 'Sentiment Monitor'
-  },
-  {
-    id: 2,
-    title: 'New competitor mention',
-    description: 'Brand mentioned alongside competitor in 5+ posts',
-    severity: 'medium',
-    timestamp: '2024-01-07 12:15',
-    resolved: true,
-    source: 'Competitor Analysis'
-  },
-  {
-    id: 3,
-    title: 'Volume threshold exceeded',
-    description: 'Mention volume exceeded 100 mentions/hour threshold',
-    severity: 'low',
-    timestamp: '2024-01-07 10:45',
-    resolved: false,
-    source: 'Volume Monitor'
-  }
-]
+interface Alert {
+  id: number
+  title: string
+  description: string
+  priority: 'high' | 'medium' | 'low' | 'info'
+  status: 'active' | 'resolved'
+  source: string
+  created_at: string
+  metadata?: any
+}
 
-const getSeverityColor = (severity: string) => {
-  switch (severity) {
-    case 'high': return 'bg-red-100 text-red-800'
-    case 'medium': return 'bg-yellow-100 text-yellow-800'
-    case 'low': return 'bg-blue-100 text-blue-800'
-    default: return 'bg-gray-100 text-gray-800'
+interface AlertsResponse {
+  alerts: Alert[]
+  summary: {
+    total: number
+    high_priority: number
+    active: number
   }
+  debug?: any
+}
+
+const priorityColors = {
+  high: 'bg-red-100 text-red-800 border-red-200',
+  medium: 'bg-yellow-100 text-yellow-800 border-yellow-200', 
+  low: 'bg-blue-100 text-blue-800 border-blue-200',
+  info: 'bg-gray-100 text-gray-800 border-gray-200'
+}
+
+const priorityIcons = {
+  high: AlertTriangle,
+  medium: Clock,
+  low: Bell,
+  info: CheckCircle2
 }
 
 export default function AlertsPage() {
-  const [slackEnabled, setSlackEnabled] = useState(true)
-  const [emailEnabled, setEmailEnabled] = useState(false)
+  const [alerts, setAlerts] = useState<Alert[]>([])
+  const [summary, setSummary] = useState({ total: 0, high_priority: 0, active: 0 })
+  const [loading, setLoading] = useState(true)
+  const searchParams = useSearchParams()
+
+  // Obtener filtros de la URL (igual que en otras páginas)
+  const getFiltersFromURL = () => {
+    return {
+      range: searchParams.get('range') || '7d',
+      sentiment: searchParams.get('sentiment') || 'all',
+      model: searchParams.get('model') || 'all',
+      region: searchParams.get('region') || 'all'
+    }
+  }
+
+  const fetchAlerts = async () => {
+    try {
+      setLoading(true)
+      const filters = getFiltersFromURL()
+      
+      // Construir URL con filtros
+      const params = new URLSearchParams({
+        range: filters.range,
+        sentiment: filters.sentiment,
+        model: filters.model,
+        region: filters.region
+      })
+      
+      console.log('🚨 Fetching alerts with filters:', filters)
+      
+      const response = await fetch(`/api/alerts?${params}`)
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch alerts')
+      }
+      
+      const data: AlertsResponse = await response.json()
+      console.log('🚨 Alerts response:', data)
+      
+      setAlerts(data.alerts || [])
+      setSummary(data.summary || { total: 0, high_priority: 0, active: 0 })
+    } catch (error) {
+      console.error('Error fetching alerts:', error)
+      setAlerts([])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Refetch cuando cambian los parámetros de URL
+  useEffect(() => {
+    fetchAlerts()
+  }, [searchParams])
+
+  const activeAlerts = alerts.filter(alert => alert.status === 'active')
+  const resolvedAlerts = alerts.filter(alert => alert.status === 'resolved')
+  const currentFilters = getFiltersFromURL()
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div className="flex justify-between items-center">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Alerts</h1>
+            <p className="text-muted-foreground">Monitor and manage your brand monitoring alerts</p>
+          </div>
+        </div>
+        <div className="grid gap-4 md:grid-cols-3">
+          {[1, 2, 3].map(i => (
+            <Card key={i}>
+              <CardContent className="p-6">
+                <div className="animate-pulse">
+                  <div className="h-4 bg-gray-200 rounded w-3/4 mb-2"></div>
+                  <div className="h-8 bg-gray-200 rounded w-1/2"></div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">Alerts</h1>
-        <p className="text-muted-foreground">
-          Monitor and manage your brand monitoring alerts
-        </p>
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Alerts</h1>
+          <p className="text-muted-foreground">Monitor and manage your brand monitoring alerts</p>
+        </div>
+        <div className="text-sm text-muted-foreground">
+          Showing alerts for: {currentFilters.range} | {currentFilters.sentiment} sentiment | {currentFilters.model} model
+        </div>
       </div>
 
-      <Tabs defaultValue="timeline" className="space-y-6">
-        <TabsList>
-          <TabsTrigger value="timeline">Alert Timeline</TabsTrigger>
-          <TabsTrigger value="settings">Notification Settings</TabsTrigger>
-        </TabsList>
+      {/* Alert Summary Cards */}
+      <div className="grid gap-4 md:grid-cols-3">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Alerts</CardTitle>
+            <Bell className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{summary.total}</div>
+            <p className="text-xs text-muted-foreground">
+              All alerts in selected period
+            </p>
+          </CardContent>
+        </Card>
 
-        <TabsContent value="timeline" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Recent Alerts</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {alerts.map((alert) => (
-                  <div key={alert.id} className="flex items-start space-x-4 p-4 border rounded-lg">
-                    <div className="flex-shrink-0 mt-1">
-                      {alert.resolved ? (
-                        <CheckCircle className="w-5 h-5 text-green-500" />
-                      ) : (
-                        <AlertTriangle className="w-5 h-5 text-orange-500" />
-                      )}
-                    </div>
-                    <div className="flex-1 space-y-2">
-                      <div className="flex items-center justify-between">
-                        <h3 className="font-medium">{alert.title}</h3>
-                        <div className="flex items-center space-x-2">
-                          <Badge className={getSeverityColor(alert.severity)}>
-                            {alert.severity}
-                          </Badge>
-                          {alert.resolved && (
-                            <Badge variant="outline" className="text-green-600">
-                              Resolved
-                            </Badge>
-                          )}
-                        </div>
-                      </div>
-                      <p className="text-sm text-muted-foreground">{alert.description}</p>
-                      <div className="flex items-center justify-between text-xs text-muted-foreground">
-                        <span>{alert.source}</span>
-                        <div className="flex items-center space-x-1">
-                          <Clock className="w-3 h-3" />
-                          <span>{alert.timestamp}</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">High Priority</CardTitle>
+            <AlertTriangle className="h-4 w-4 text-red-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-red-600">{summary.high_priority}</div>
+            <p className="text-xs text-muted-foreground">
+              Require immediate attention
+            </p>
+          </CardContent>
+        </Card>
 
-        <TabsContent value="settings" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Notification Channels</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label>Slack Notifications</Label>
-                    <p className="text-sm text-muted-foreground">
-                      Send alerts to your Slack workspace
-                    </p>
-                  </div>
-                  <Switch checked={slackEnabled} onCheckedChange={setSlackEnabled} />
-                </div>
-                
-                {slackEnabled && (
-                  <div className="ml-4 space-y-2">
-                    <Label htmlFor="slackWebhook">Slack Webhook URL</Label>
-                    <Input
-                      id="slackWebhook"
-                      placeholder="https://hooks.slack.com/services/..."
-                      defaultValue="https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX"
-                    />
-                  </div>
-                )}
-              </div>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Active Alerts</CardTitle>
+            <Clock className="h-4 w-4 text-yellow-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-yellow-600">{summary.active}</div>
+            <p className="text-xs text-muted-foreground">
+              Currently unresolved
+            </p>
+          </CardContent>
+        </Card>
+      </div>
 
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label>Email Notifications</Label>
-                    <p className="text-sm text-muted-foreground">
-                      Send alerts to your email address
-                    </p>
-                  </div>
-                  <Switch checked={emailEnabled} onCheckedChange={setEmailEnabled} />
-                </div>
-                
-                {emailEnabled && (
-                  <div className="ml-4 space-y-2">
-                    <Label htmlFor="emailAddress">Email Address</Label>
-                    <Input
-                      id="emailAddress"
-                      type="email"
-                      placeholder="alerts@yourcompany.com"
-                    />
-                  </div>
-                )}
-              </div>
+      {/* Alerts Timeline */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Recent Alerts</CardTitle>
+          <CardDescription>Latest monitoring alerts and notifications</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Tabs defaultValue="all" className="w-full">
+            <TabsList className="grid w-full grid-cols-3">
+              <TabsTrigger value="all">All ({alerts.length})</TabsTrigger>
+              <TabsTrigger value="active">Active ({activeAlerts.length})</TabsTrigger>
+              <TabsTrigger value="resolved">Resolved ({resolvedAlerts.length})</TabsTrigger>
+            </TabsList>
 
-              <Button>Save Settings</Button>
-            </CardContent>
-          </Card>
+            <TabsContent value="all" className="mt-6">
+              <AlertsList alerts={alerts} />
+            </TabsContent>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Alert Thresholds</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="volumeThreshold">Volume Threshold (mentions/hour)</Label>
-                  <Input id="volumeThreshold" type="number" defaultValue="100" />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="sentimentThreshold">Negative Sentiment Threshold (%)</Label>
-                  <Input id="sentimentThreshold" type="number" defaultValue="30" />
+            <TabsContent value="active" className="mt-6">
+              <AlertsList alerts={activeAlerts} />
+            </TabsContent>
+
+            <TabsContent value="resolved" className="mt-6">
+              <AlertsList alerts={resolvedAlerts} />
+            </TabsContent>
+          </Tabs>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
+function AlertsList({ alerts }: { alerts: Alert[] }) {
+  if (alerts.length === 0) {
+    return (
+      <div className="text-center py-12">
+        <CheckCircle2 className="mx-auto h-12 w-12 text-green-500 mb-4" />
+        <h3 className="text-lg font-semibold mb-2">No alerts found</h3>
+        <p className="text-muted-foreground">No alerts match your current filters</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-4">
+      {alerts.map((alert) => {
+        const Icon = priorityIcons[alert.priority]
+        return (
+          <div key={alert.id} className="flex items-start space-x-4 p-4 border rounded-lg">
+            <div className={`p-2 rounded-full ${
+              alert.priority === 'high' ? 'bg-red-100' :
+              alert.priority === 'medium' ? 'bg-yellow-100' :
+              alert.priority === 'low' ? 'bg-blue-100' : 'bg-gray-100'
+            }`}>
+              <Icon className={`h-4 w-4 ${
+                alert.priority === 'high' ? 'text-red-600' :
+                alert.priority === 'medium' ? 'text-yellow-600' :
+                alert.priority === 'low' ? 'text-blue-600' : 'text-gray-600'
+              }`} />
+            </div>
+            
+            <div className="flex-1 space-y-2">
+              <div className="flex items-center justify-between">
+                <h4 className="font-semibold">{alert.title}</h4>
+                <div className="flex items-center space-x-2">
+                  <Badge variant="outline" className={priorityColors[alert.priority]}>
+                    {alert.priority}
+                  </Badge>
+                  <Badge variant={alert.status === 'active' ? 'default' : 'secondary'}>
+                    {alert.status}
+                  </Badge>
                 </div>
               </div>
-              <Button>Update Thresholds</Button>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+              
+              <p className="text-sm text-muted-foreground">{alert.description}</p>
+              
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span>{alert.source}</span>
+                <span>{alert.created_at}</span>
+              </div>
+              
+              {alert.metadata && alert.metadata.competitors && (
+                <div className="text-xs bg-gray-50 p-2 rounded">
+                  <strong>Competitors mentioned:</strong> {alert.metadata.competitors.join(', ')}
+                </div>
+              )}
+            </div>
+          </div>
+        )
+      })}
     </div>
   )
 }

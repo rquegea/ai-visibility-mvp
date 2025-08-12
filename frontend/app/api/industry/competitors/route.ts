@@ -8,7 +8,7 @@ export async function GET(request: NextRequest) {
     const queryString = searchParams.toString()
     
     const response = await fetch(
-      `${API_BASE_URL}/api/visibility${queryString ? `?${queryString}` : ''}`,
+      `${API_BASE_URL}/api/industry/competitors${queryString ? `?${queryString}` : ''}`,
       {
         method: 'GET',
         headers: {
@@ -24,9 +24,9 @@ export async function GET(request: NextRequest) {
     const data = await response.json()
     return NextResponse.json(data)
   } catch (error) {
-    console.error('Visibility API Proxy Error:', error)
+    console.error('Industry Competitors API Error:', error)
     return NextResponse.json(
-      { error: 'Failed to fetch visibility data' },
+      { competitors: [], error: 'Failed to fetch competitors data' },
       { status: 500 }
     )
   }

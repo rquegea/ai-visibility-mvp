@@ -1,15 +1,12 @@
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import './globals.css'
-import { ThemeProvider } from '@/components/theme-provider'
-import { QueryProvider } from '@/components/query-provider'
 
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'AI Visibility - B2B SaaS Dashboard',
-  description: 'Monitor and analyze your brand mentions across the web',
-    generator: 'v0.dev'
+  title: 'AI Visibility Dashboard',
+  description: 'AI-powered brand visibility analytics',
 }
 
 export default function RootLayout({
@@ -18,18 +15,11 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en">
       <body className={inter.className}>
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="light"
-          enableSystem
-          disableTransitionOnChange
-        >
-          <QueryProvider>
-            {children}
-          </QueryProvider>
-        </ThemeProvider>
+        <div className="min-h-screen bg-background">
+          {children}
+        </div>
       </body>
     </html>
   )

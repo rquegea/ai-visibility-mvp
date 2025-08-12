@@ -144,7 +144,7 @@ return (
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        {['All models', 'GPT-4o', 'Llama 3.1', 'Claude 3.5'].map((m) => (
+        {['All models', 'GPT-4o', 'Sonar 7-B', 'Claude 3.5'].map((m) => (
           <DropdownMenuItem key={m} onClick={() => setModel(m)}>
             {m}
           </DropdownMenuItem>

@@ -5,25 +5,36 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts'
 import { Badge } from "@/components/ui/badge"
 import { QueryVisibility, VisibilityByQueryResponse } from "@/types"
+import { useGlobalFilters, buildGlobalQueryParams } from '@/stores/use-global-filters'
 
+// ELIMINADO: Props manuales, ahora usa filtros globales
 interface QueryVisibilityChartProps {
-  timeRange?: string
-  brand?: string
+  brand?: string // Mantener solo brand como prop opcional
 }
 
-export function QueryVisibilityChart({ timeRange = "7d", brand = "rho" }: QueryVisibilityChartProps) {
+export function QueryVisibilityChart({ brand = "rho" }: QueryVisibilityChartProps) {
   const [data, setData] = useState<QueryVisibility[]>([])
   const [loading, setLoading] = useState(true)
   const [brandName, setBrandName] = useState("Rho")
 
+  // NUEVO: Usar filtros globales
+  const globalFilters = useGlobalFilters()
+  const queryParams = buildGlobalQueryParams(globalFilters)
+
+  // ACTUALIZADO: useEffect ahora escucha cambios en filtros globales
   useEffect(() => {
     fetchData()
-  }, [timeRange, brand])
+  }, [queryParams, brand]) // Depende de queryParams en lugar de timeRange manual
 
   const fetchData = async () => {
     try {
       setLoading(true)
-      const response = await fetch(`/api/visibility/by-query?range=${timeRange}&brand=${brand}`)
+      
+      // ACTUALIZADO: Usar queryParams globales en lugar de timeRange manual
+      const url = `/api/visibility/by-query?${queryParams}&brand=${brand}`
+      console.log('QueryVisibilityChart fetching:', url) // Debug
+      
+      const response = await fetch(url)
       const result: VisibilityByQueryResponse = await response.json()
       
       if (result.queries) {
@@ -55,6 +66,15 @@ export function QueryVisibilityChart({ timeRange = "7d", brand = "rho" }: QueryV
     full_query: item.full_query
   }))
 
+  // NUEVO: Helper para mostrar el rango de tiempo actual
+  const getTimeRangeLabel = () => {
+    const { timeRange, from, to } = globalFilters
+    if (timeRange === 'custom' && from && to) {
+      return `${from} to ${to}`
+    }
+    return timeRange.replace('d', ' days').replace('h', ' hours')
+  }
+
   if (loading) {
     return (
       <Card>
@@ -76,8 +96,19 @@ export function QueryVisibilityChart({ timeRange = "7d", brand = "rho" }: QueryV
         <CardTitle className="flex items-center gap-2">
           {brandName} Visibility % per Query
           <Badge variant="outline" className="text-xs">
-            {timeRange.replace('d', ' days').replace('h', ' hours')}
+            {getTimeRangeLabel()}
           </Badge>
+          {/* NUEVO: Mostrar filtros aplicados */}
+          {globalFilters.model !== "All models" && (
+            <Badge variant="secondary" className="text-xs">
+              {globalFilters.model}
+            </Badge>
+          )}
+          {globalFilters.advanced.sentiment !== "all" && (
+            <Badge variant="secondary" className="text-xs">
+              {globalFilters.advanced.sentiment}
+            </Badge>
+          )}
         </CardTitle>
       </CardHeader>
       <CardContent>
@@ -107,6 +138,11 @@ export function QueryVisibilityChart({ timeRange = "7d", brand = "rho" }: QueryV
                         </p>
                         <p className="text-xs text-gray-500">
                           {data.brand_mentions} of {data.mentions} mentions
+                        </p>
+                        {/* NUEVO: Mostrar filtros en tooltip */}
+                        <p className="text-xs text-gray-400 mt-1">
+                          Filtered by: {getTimeRangeLabel()}
+                          {globalFilters.model !== "All models" && ` • ${globalFilters.model}`}
                         </p>
                       </div>
                     )
@@ -139,6 +175,17 @@ export function QueryVisibilityChart({ timeRange = "7d", brand = "rho" }: QueryV
               </Badge>
             </div>
           ))}
+          
+          {/* NUEVO: Indicador de filtros activos */}
+          {(globalFilters.model !== "All models" || globalFilters.advanced.sentiment !== "all") && (
+            <div className="mt-3 pt-2 border-t border-gray-200">
+              <div className="text-xs text-gray-500">
+                Active filters: {getTimeRangeLabel()}
+                {globalFilters.model !== "All models" && ` • ${globalFilters.model}`}
+                {globalFilters.advanced.sentiment !== "all" && ` • ${globalFilters.advanced.sentiment}`}
+              </div>
+            </div>
+          )}
         </div>
       </CardContent>
     </Card>

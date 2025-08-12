@@ -1,9 +1,55 @@
+# Dependencies
 node_modules/
-.next/
-venv/
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+.Python
+
+# Environment variables
 .env
 .env.local
-.DS_Store
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# Database
+*.db
+*.sqlite3
+
+# Logs
 *.log
+logs/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Build outputs
+.next/
+dist/
+build/
+
+# Docker
+.dockerignore
+
+# Temporary files
+*.tmp
+*.temp
+EOF

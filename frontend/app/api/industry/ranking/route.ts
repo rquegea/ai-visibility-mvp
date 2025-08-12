@@ -8,7 +8,7 @@ export async function GET(request: NextRequest) {
     const queryString = searchParams.toString()
     
     const response = await fetch(
-      `${API_BASE_URL}/api/visibility${queryString ? `?${queryString}` : ''}`,
+      `${API_BASE_URL}/api/industry/ranking${queryString ? `?${queryString}` : ''}`,
       {
         method: 'GET',
         headers: {
@@ -24,9 +24,9 @@ export async function GET(request: NextRequest) {
     const data = await response.json()
     return NextResponse.json(data)
   } catch (error) {
-    console.error('Visibility API Proxy Error:', error)
+    console.error('Industry Ranking API Proxy Error:', error)
     return NextResponse.json(
-      { error: 'Failed to fetch visibility data' },
+      { error: 'Failed to fetch ranking data' },
       { status: 500 }
     )
   }

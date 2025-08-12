@@ -565,6 +565,7 @@ def get_visibility_by_query():
         print(f"Error en visibility by query: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
+
 @app.route('/api/insights', methods=['GET'])
 def get_insights():
     """Obtener insights reales de la base de datos - FILTROS DE TIEMPO CORREGIDOS"""
@@ -799,6 +800,7 @@ def get_insights():
     except Exception as e:
         print(f"Error en insights endpoint: {str(e)}")
         return jsonify({"error": str(e)}), 500
+
 
 @app.route('/api/topics', methods=['GET'])
 def get_topics():
@@ -1079,205 +1081,102 @@ def debug_insights():
         
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+    
+
+
+
 
 @app.route('/api/industry/competitors', methods=['GET'])
 def get_industry_competitors():
-    """Obtener competidores basado en análisis automático de insights - GENÉRICO"""
+    """Obtener scatter de competidores basado en datos reales"""
     try:
         filters = parse_filters(request)
         
         conn = get_db_connection()
         cur = conn.cursor()
         
-        # Query corregida sin GROUP BY problemático
+        # Obtener competidores basados en análisis de marcas en insights
         competitors_query = """
         SELECT 
-            i.payload
-        FROM insights i
-        WHERE i.created_at >= %s AND i.created_at <= %s
-        AND i.payload IS NOT NULL
-        ORDER BY i.created_at DESC
-        LIMIT 50
+            CASE 
+                WHEN i.payload ? 'brands' THEN 
+                    jsonb_array_elements_text(i.payload->'brands')
+                WHEN m.response ILIKE '%oreo%' THEN 'Oreo'
+                WHEN m.response ILIKE '%chips ahoy%' THEN 'Chips Ahoy'
+                WHEN m.response ILIKE '%pepperidge%' THEN 'Pepperidge Farm'
+                WHEN m.response ILIKE '%girl scout%' THEN 'Girl Scout'
+                WHEN m.response ILIKE '%nabisco%' THEN 'Nabisco'
+                WHEN m.response ILIKE '%keebler%' THEN 'Keebler'
+                WHEN m.response ILIKE '%tate%' THEN 'Tates'
+                WHEN m.response ILIKE '%famous amos%' THEN 'Famous Amos'
+                WHEN m.response ILIKE '%milano%' THEN 'Milano'
+                WHEN m.response ILIKE '%archway%' THEN 'Archway'
+                ELSE 'Other'
+            END as brand_name,
+            AVG(m.sentiment) as avg_sentiment,
+            COUNT(*) as mentions
+        FROM mentions m
+        LEFT JOIN insights i ON m.query_id = i.query_id
+        WHERE m.created_at >= %s AND m.created_at <= %s
+        AND (
+            m.response ILIKE '%cookie%' OR 
+            m.response ILIKE '%galleta%' OR
+            m.response ILIKE '%biscuit%' OR
+            i.payload ? 'brands'
+        )
+        GROUP BY brand_name
+        HAVING brand_name != 'Other' AND COUNT(*) >= 2
+        ORDER BY mentions DESC, avg_sentiment DESC
+        LIMIT 15
         """
         
         cur.execute(competitors_query, [filters['start_date'], filters['end_date']])
         rows = cur.fetchall()
         
-        print(f"DEBUG: Encontrados {len(rows)} insights para analizar")
-        
-        # Diccionario para acumular menciones de entidades
-        entity_mentions = {}
-        
+        competitors = []
         for row in rows:
-            payload = row[0]
+            brand_name = row[0]
+            sentiment = float(row[1]) if row[1] else 0.0
+            mentions = row[2]
             
-            # Buscar en diferentes secciones del insight
-            sections_to_check = ['opportunities', 'risks', 'trends', 'brands', 'competitors', 'companies']
-            
-            for section in sections_to_check:
-                if section in payload and payload[section]:
-                    items = payload[section]
-                    if isinstance(items, list):
-                        for item in items:
-                            if isinstance(item, str):
-                                # Extraer entidades candidatas del texto
-                                entities = extract_entities_from_text(item)
-                                
-                                for entity in entities:
-                                    if entity not in entity_mentions:
-                                        entity_mentions[entity] = {
-                                            'mentions': 0,
-                                            'positive_contexts': 0,
-                                            'negative_contexts': 0,
-                                            'neutral_contexts': 0
-                                        }
-                                    
-                                    entity_mentions[entity]['mentions'] += 1
-                                    
-                                    # Determinar sentimiento del contexto
-                                    if section == 'opportunities' or has_positive_context(item):
-                                        entity_mentions[entity]['positive_contexts'] += 1
-                                    elif section == 'risks' or has_negative_context(item):
-                                        entity_mentions[entity]['negative_contexts'] += 1
-                                    else:
-                                        entity_mentions[entity]['neutral_contexts'] += 1
+            competitors.append({
+                "name": brand_name,
+                "sentiment_avg": sentiment,
+                "mentions": mentions,
+                "logo": f"/placeholder.svg?height=40&width=40&text={brand_name.replace(' ', '+')}"
+            })
         
-        print(f"DEBUG: Entidades extraídas: {list(entity_mentions.keys())}")
-        
-        # Si no hay datos de insights, usar análisis directo de menciones
-        if not entity_mentions:
-            print("DEBUG: No hay entidades en insights, analizando menciones directas")
-            
-            # Analizar directamente el contenido de las respuestas de menciones
+        # Si no hay datos reales, usar fallback basado en queries conocidas
+        if not competitors:
             fallback_query = """
             SELECT 
-                m.response,
-                m.sentiment
-            FROM mentions m
-            WHERE m.created_at >= %s AND m.created_at <= %s
-            AND m.response IS NOT NULL
-            AND LENGTH(m.response) > 50
-            ORDER BY m.created_at DESC
-            LIMIT 20
+                q.brand,
+                AVG(m.sentiment) as avg_sentiment,
+                COUNT(m.id) as mentions
+            FROM queries q
+            LEFT JOIN mentions m ON q.id = m.query_id 
+                AND m.created_at >= %s AND m.created_at <= %s
+            WHERE q.brand IS NOT NULL
+            GROUP BY q.brand
+            HAVING COUNT(m.id) > 0
+            ORDER BY mentions DESC
+            LIMIT 10
             """
             
             cur.execute(fallback_query, [filters['start_date'], filters['end_date']])
             fallback_rows = cur.fetchall()
             
-            print(f"DEBUG: Analizando {len(fallback_rows)} menciones como fallback")
-            
             for row in fallback_rows:
-                response_text = row[0]
+                brand = row[0]
                 sentiment = float(row[1]) if row[1] else 0.0
-                
-                # Extraer entidades del texto de respuesta
-                entities = extract_entities_from_text(response_text)
-                
-                for entity in entities:
-                    if entity not in entity_mentions:
-                        entity_mentions[entity] = {
-                            'mentions': 0,
-                            'positive_contexts': 0,
-                            'negative_contexts': 0,
-                            'neutral_contexts': 0
-                        }
-                    
-                    entity_mentions[entity]['mentions'] += 1
-                    
-                    if sentiment > 0.1:
-                        entity_mentions[entity]['positive_contexts'] += 1
-                    elif sentiment < -0.1:
-                        entity_mentions[entity]['negative_contexts'] += 1
-                    else:
-                        entity_mentions[entity]['neutral_contexts'] += 1
-        
-        # 🎯 CLEANUP HARDCODED: Mapear entidades extraídas a marcas reales
-        entity_cleanup_map = {
-            'tate': 'Tate\'s Bake Shop',
-            'bake shop': 'Tate\'s Bake Shop', 
-            'chips ahoy': 'Chips Ahoy!',
-            'oreo': 'Oreo',
-            'biscoff': 'Lotus Biscoff',
-            'lotus': 'Lotus Biscoff',
-            'milano': 'Pepperidge Farm Milano',
-            'pepperidge farm': 'Pepperidge Farm',
-            'keebler': 'Keebler',
-            'nabisco': 'Nabisco',
-            'girl scouts': 'Girl Scout Cookies',
-            'mondelez': 'Mondelez International',
-            'pepsico': 'PepsiCo',
-            'kellogg': 'Kellogg\'s',
-            'general mills': 'General Mills',
-            'nestle': 'Nestlé',
-            'crumbl': 'Crumbl Cookies',
-            'little debbie': 'Little Debbie',
-            'newman': 'Newman\'s Own',
-            'annie': 'Annie\'s Homegrown',
-            'magnolia bakery': 'Magnolia Bakery',
-            'betty crocker': 'Betty Crocker',
-            'president': 'President\'s Choice',
-            'choice': 'President\'s Choice'
-        }
-        
-        # Filtrar y convertir a formato requerido por el frontend
-        competitors = []
-        
-        # Procesar entidades y limpiar
-        for entity_name, data in entity_mentions.items():
-            # Limpiar el nombre de la entidad
-            entity_lower = entity_name.lower().strip()
-            
-            # Buscar en el mapa de limpieza
-            clean_name = None
-            for key, clean_value in entity_cleanup_map.items():
-                if key in entity_lower or entity_lower in key:
-                    clean_name = clean_value
-                    break
-            
-            # Si no está en el mapa, aplicar filtros normales
-            if not clean_name:
-                if is_likely_brand_or_company(entity_name) and data['mentions'] >= 1:
-                    clean_name = entity_name
-                else:
-                    continue  # Saltar esta entidad
-            
-            # Verificar si ya existe (evitar duplicados)
-            existing_competitor = None
-            for comp in competitors:
-                if comp['name'].lower() == clean_name.lower():
-                    existing_competitor = comp
-                    break
-            
-            if existing_competitor:
-                # Sumar datos al existente
-                existing_competitor['mentions'] += data['mentions']
-                # Recalcular sentiment promedio
-                total_contexts = data['positive_contexts'] + data['negative_contexts'] + data['neutral_contexts']
-                if total_contexts > 0:
-                    new_sentiment = (data['positive_contexts'] - data['negative_contexts']) / total_contexts
-                    # Promedio ponderado
-                    existing_competitor['sentiment_avg'] = (existing_competitor['sentiment_avg'] + new_sentiment) / 2
-            else:
-                # Crear nuevo competidor
-                total_contexts = data['positive_contexts'] + data['negative_contexts'] + data['neutral_contexts']
-                
-                if total_contexts > 0:
-                    sentiment_avg = (data['positive_contexts'] - data['negative_contexts']) / total_contexts
-                else:
-                    sentiment_avg = 0.0
+                mentions = row[2]
                 
                 competitors.append({
-                    "name": clean_name,
-                    "sentiment_avg": round(sentiment_avg, 3),
-                    "mentions": data['mentions'],
-                    "logo": f"/placeholder.svg?height=40&width=40&text={clean_name.replace(' ', '+').replace('\'', '')}"
+                    "name": brand or "Unknown Brand",
+                    "sentiment_avg": sentiment,
+                    "mentions": mentions,
+                    "logo": f"/placeholder.svg?height=40&width=40&text={brand}"
                 })
-        
-        # Ordenar por menciones descendente y tomar top 10
-        competitors.sort(key=lambda x: x['mentions'], reverse=True)
-        competitors = competitors[:10]
-        
-        print(f"DEBUG: Competidores finales: {[c['name'] for c in competitors]}")
         
         cur.close()
         conn.close()
@@ -1286,390 +1185,387 @@ def get_industry_competitors():
             "competitors": competitors,
             "debug": {
                 "filters_applied": filters,
-                "source": "auto_extracted",
-                "total_found": len(competitors),
-                "extraction_method": "insights" if len(rows) > 0 else "mentions",
-                "entities_found": len(entity_mentions)
+                "total_found": len(competitors)
             }
         })
         
     except Exception as e:
         print(f"Error en industry competitors: {str(e)}")
-        return jsonify({"competitors": [], "error": str(e)}), 500
+        return jsonify({"error": str(e)}), 500
 
-
-# Funciones auxiliares
-def extract_entities_from_text(text):
-    """Extraer entidades candidatas (marcas/empresas) de un texto"""
-    import re
-    
-    entities = []
-    
-    # Buscar palabras capitalizadas que podrían ser marcas
-    pattern = r'\b[A-Z][a-zA-Z]*(?:\s+[A-Z][a-zA-Z]*)*\b'
-    matches = re.findall(pattern, text)
-    
-    for match in matches:
-        # Filtrar palabras comunes que no son marcas
-        if not is_common_word(match.lower()) and len(match) > 2:
-            clean_entity = match.strip()
-            if clean_entity and clean_entity not in entities:
-                entities.append(clean_entity)
-    
-    return entities[:5]  # Máximo 5 entidades por texto
-
-
-def is_common_word(word):
-    """Filtrar palabras comunes que no son marcas - MEJORADO"""
-    common_words = {
-        # Palabras básicas
-        'the', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by',
-        'this', 'that', 'these', 'those', 'it', 'they', 'them', 'we', 'us', 'you',
-        
-        # Adjetivos descriptivos (que aparecen en insights)
-        'best', 'good', 'great', 'new', 'old', 'first', 'last', 'next', 'other',
-        'more', 'most', 'some', 'many', 'all', 'each', 'every', 'any', 'no', 'one',
-        'two', 'three', 'several', 'few', 'much', 'little', 'big', 'small', 'large',
-        'high', 'low', 'top', 'popular', 'leading', 'main', 'major', 'key', 'important',
-        
-        # Palabras de tendencias/insights que NO son marcas
-        'growing', 'increasing', 'rising', 'emerging', 'expanding', 'improved', 'improving',
-        'enhanced', 'enhancing', 'increased', 'potential', 'opportunity', 'growth',
-        'trend', 'preference', 'interest', 'focus', 'shift', 'change', 'changing',
-        'availability', 'expansion', 'emergence', 'competition', 'competencia',
-        'preferencia', 'tendencia', 'crecimiento', 'aumento', 'concurrence',
-        'croissance', 'augmentation', 'consumers', 'consumer', 'market', 'segment',
-        'category', 'industry', 'sector', 'demand', 'supply', 'sales', 'revenue',
-        'profit', 'margin', 'share', 'position', 'ranking', 'performance',
-        'negative', 'positive', 'neutral', 'homemade', 'seasonal', 'limited',
-        'premium', 'budget', 'organic', 'natural', 'healthy', 'vegan', 'fiber',
-        'sugar', 'free', 'zero', 'low', 'reduced', 'artificial', 'real',
-        'failure', 'poor', 'improve', 'enhance', 'there', 'las', 'el', 'la', 'de',
-        'international', 'global', 'local', 'regional', 'national', 'domestic'
-    }
-    return word.lower() in common_words
-
-
-def is_likely_brand_or_company(entity):
-    """Determinar si una entidad es probablemente una marca o empresa - MEJORADO"""
-    
-    # Filtrar entidades muy cortas
-    if len(entity) < 2:
-        return False
-    
-    # Filtrar palabras comunes que no son marcas
-    if is_common_word(entity):
-        return False
-    
-    # Lista de marcas conocidas que queremos mantener (extraídas de tus datos)
-    known_brands = {
-        'oreo', 'chips ahoy', 'pepperidge farm', 'keebler', 'nabisco', 'girl scouts',
-        'walkers', 'biscoff', 'milano', 'tate', 'bake shop', 'tates', 'hello panda',
-        'mondelez', 'pepsico', 'kellogg', 'general mills', 'nestle', 'britannia',
-        'hershey', 'campbell soup', 'parle', 'danone', 'starbucks', 'dunkin',
-        'little debbie', 'aldi', 'benton', 'president', 'choice', 'digestive',
-        'princesa', 'belvita', 'artiach', 'mercadona', 'carrefour', 'el corte',
-        'auchan', 'dia', 'pierre', 'cyril lignac', 'biscuiterie', 'abbaye',
-        'poulard', 'dare foods', 'newman', 'magnolia bakery', 'walmart',
-        'great value', 'millville', 'betty crocker', 'grandma', 'stop', 'shop',
-        'matt', 'bakery', 'annie', 'homegrown', 'crumbl cookies', 'crumbl',
-        'european baba bear', 'lotus'
-    }
-    
-    # Si es una marca conocida, aceptarla
-    if entity.lower() in known_brands:
-        return True
-    
-    # Aceptar combinaciones conocidas (ej: "Tate Bake Shop" = "Tate" + "Bake Shop")
-    entity_lower = entity.lower()
-    if any(brand in entity_lower for brand in ['tate', 'bake shop', 'chips ahoy', 'girl scout', 'president choice']):
-        return True
-    
-    # Filtrar palabras que claramente no son marcas por su significado
-    non_brand_words = {
-        'growing', 'increasing', 'potential', 'increased', 'preference', 'increase',
-        'competition', 'emerging', 'expansion', 'market', 'trend', 'growth',
-        'consumers', 'availability', 'interest', 'focus', 'negative', 'improving',
-        'enhancing', 'failure', 'poor', 'competencia', 'preferencia', 'tendencia',
-        'crecimiento', 'aumento', 'concurrence', 'croissance', 'augmentation'
-    }
-    
-    if entity.lower() in non_brand_words:
-        return False
-    
-    # Filtrar entidades que son solo adjetivos o verbos
-    if entity.lower().endswith(('ing', 'ed', 'er', 'est', 'ly', 'tion', 'ness')):
-        return False
-    
-    # Aceptar si tiene características de marca:
-    # 1. Formato de marca (1-3 palabras capitalizadas)
-    # 2. No contiene palabras prohibidas
-    # 3. Tiene longitud razonable
-    words = entity.split()
-    if 1 <= len(words) <= 3 and all(word[0].isupper() for word in words if word):
-        # Verificar que no sea solo una palabra descriptiva capitalizada
-        if len(words) == 1 and words[0].lower() in non_brand_words:
-            return False
-        return True
-    
-    return False
-
-
-def has_positive_context(text):
-    """Detectar contexto positivo en el texto"""
-    positive_words = ['better', 'advantage', 'leading', 'preferred', 'popular', 'excellent', 'outstanding', 'superior', 'quality', 'innovative']
-    return any(word in text.lower() for word in positive_words)
-
-
-def has_negative_context(text):
-    """Detectar contexto negativo en el texto"""
-    negative_words = ['problem', 'issue', 'complaint', 'negative', 'poor', 'worse', 'declining', 'struggling', 'challenge']
-    return any(word in text.lower() for word in negative_words)
-
-
-
-
-# Agregar esta función simple al final de backend/app.py, ANTES de if __name__ == '__main__':
-
-@app.route('/api/industry/ranking', methods=['GET'])
-def get_industry_ranking():
-    """Obtener ranking simple basado en los competidores ya extraídos"""
-    try:
-        # Reutilizar la lógica de competidores que ya funciona
-        filters = parse_filters(request)
-        
-        # Llamar internamente al endpoint de competidores que ya funciona
-        import requests
-        competitors_response = requests.get(f"http://localhost:5050/api/industry/competitors?{request.query_string.decode()}")
-        
-        if competitors_response.status_code == 200:
-            competitors_data = competitors_response.json()
-            competitors = competitors_data.get('competitors', [])
-            
-            # Convertir competidores a formato ranking
-            ranking_moves = []
-            for i, competitor in enumerate(competitors[:10]):
-                # Calcular delta basado en sentiment
-                sentiment = competitor.get('sentiment_avg', 0.0)
-                
-                if sentiment > 0.1:
-                    delta = 1
-                elif sentiment < -0.1:
-                    delta = -1
-                else:
-                    delta = 0
-                
-                ranking_moves.append({
-                    "pos": i + 1,
-                    "name": competitor['name'],
-                    "delta": delta,
-                    "mentions": competitor['mentions'],
-                    "sentiment": sentiment
-                })
-            
-            return jsonify({
-                "ranking": ranking_moves,
-                "debug": {
-                    "filters_applied": filters,
-                    "source": "competitors_reuse"
-                }
-            })
-        else:
-            # Fallback simple
-            return jsonify({
-                "ranking": [
-                    {"pos": 1, "name": "No data", "delta": 0, "mentions": 0, "sentiment": 0.0}
-                ],
-                "debug": {"error": "competitors_endpoint_failed"}
-            })
-        
-    except Exception as e:
-        print(f"Error en industry ranking: {str(e)}")
-        return jsonify({"ranking": [], "error": str(e)}), 500
-    
-@app.route('/api/alerts', methods=['GET'])
-def get_alerts():
-    """Obtener alertas basadas en análisis de menciones y insights"""
+@app.route('/api/industry/share-of-voice', methods=['GET'])
+def get_share_of_voice():
+    """Obtener share of voice basado en menciones reales por día"""
     try:
         filters = parse_filters(request)
         
         conn = get_db_connection()
         cur = conn.cursor()
         
-        alerts = []
-        alert_id = 1
-        
-        # 1. ALERTA: Spike de sentimiento negativo
-        negative_query = """
+        # Obtener menciones por día y marca
+        sov_query = """
         SELECT 
-            COUNT(*) as negative_count,
-            COUNT(CASE WHEN m.created_at >= %s - INTERVAL '2 hours' THEN 1 END) as recent_negative
+            DATE(m.created_at) as date,
+            CASE 
+                WHEN m.response ILIKE '%oreo%' THEN 'Oreo'
+                WHEN m.response ILIKE '%chips ahoy%' THEN 'Chips Ahoy'
+                WHEN m.response ILIKE '%pepperidge%' THEN 'Pepperidge Farm'
+                WHEN m.response ILIKE '%girl scout%' THEN 'Girl Scout'
+                WHEN m.response ILIKE '%nabisco%' THEN 'Nabisco'
+                WHEN m.response ILIKE '%keebler%' THEN 'Keebler'
+                ELSE 'Other'
+            END as brand,
+            COUNT(*) as daily_mentions
         FROM mentions m
         WHERE m.created_at >= %s AND m.created_at <= %s
-        AND m.sentiment < -0.3
+        AND (m.response ILIKE '%cookie%' OR m.response ILIKE '%galleta%' OR m.response ILIKE '%biscuit%')
+        GROUP BY DATE(m.created_at), brand
+        HAVING brand != 'Other'
+        ORDER BY date, daily_mentions DESC
         """
         
-        two_hours_ago = filters['end_date'] - timedelta(hours=2)
-        cur.execute(negative_query, [two_hours_ago, filters['start_date'], filters['end_date']])
-        neg_result = cur.fetchone()
+        cur.execute(sov_query, [filters['start_date'], filters['end_date']])
+        rows = cur.fetchall()
         
-        negative_total = neg_result[0] or 0
-        negative_recent = neg_result[1] or 0
+        # Procesar datos para obtener porcentajes por día
+        daily_data = {}
+        for row in rows:
+            date_str = row[0].strftime('%b %d')
+            brand = row[1]
+            mentions = row[2]
+            
+            if date_str not in daily_data:
+                daily_data[date_str] = {}
+            daily_data[date_str][brand] = mentions
         
-        if negative_recent > 0 and negative_total > 3:
-            percentage_increase = min(150, (negative_recent / max(negative_total - negative_recent, 1)) * 100)
-            alerts.append({
-                "id": alert_id,
-                "type": "negative_sentiment",
-                "title": "Negative sentiment spike detected",
-                "description": f"Negative mentions increased by {percentage_increase:.0f}% in the last 2 hours",
-                "priority": "high",
-                "status": "active",
-                "source": "Sentiment Monitor",
-                "created_at": filters['end_date'].strftime('%Y-%m-%d %H:%M'),
-                "metadata": {
-                    "recent_count": negative_recent,
-                    "total_count": negative_total,
-                    "threshold": "high"
-                }
-            })
-            alert_id += 1
+        # Calcular porcentajes
+        sov_data = []
+        for date_str, brands in daily_data.items():
+            total_mentions = sum(brands.values())
+            day_entry = {"date": date_str}
+            
+            for brand, mentions in brands.items():
+                percentage = (mentions / total_mentions) * 100 if total_mentions > 0 else 0
+                day_entry[brand] = round(percentage, 1)
+            
+            sov_data.append(day_entry)
         
-        # 2. ALERTA: Nuevo competidor mencionado
-        competitor_query = """
-        SELECT DISTINCT m.response
+        # Ordenar por fecha
+        sov_data.sort(key=lambda x: x["date"])
+        
+        cur.close()
+        conn.close()
+        
+        return jsonify({
+            "sov_data": sov_data,
+            "debug": {
+                "filters_applied": filters,
+                "days_found": len(sov_data)
+            }
+        })
+        
+    except Exception as e:
+        print(f"Error en share of voice: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/industry/ranking', methods=['GET'])
+def get_industry_ranking():
+    """Obtener ranking de movimientos basado en datos reales"""
+    try:
+        filters = parse_filters(request)
+        
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        # Obtener ranking actual
+        current_ranking_query = """
+        SELECT 
+            CASE 
+                WHEN m.response ILIKE '%oreo%' THEN 'Oreo'
+                WHEN m.response ILIKE '%chips ahoy%' THEN 'Chips Ahoy'
+                WHEN m.response ILIKE '%pepperidge%' THEN 'Pepperidge Farm'
+                WHEN m.response ILIKE '%girl scout%' THEN 'Girl Scout Cookies'
+                WHEN m.response ILIKE '%nabisco%' THEN 'Nabisco'
+                WHEN m.response ILIKE '%keebler%' THEN 'Keebler'
+                WHEN m.response ILIKE '%tate%' THEN 'Tates'
+                WHEN m.response ILIKE '%famous amos%' THEN 'Famous Amos'
+                WHEN m.response ILIKE '%milano%' THEN 'Milano'
+                WHEN m.response ILIKE '%archway%' THEN 'Archway'
+                ELSE q.brand
+            END as brand_name,
+            COUNT(*) as current_mentions,
+            AVG(m.sentiment) as avg_sentiment
         FROM mentions m
+        JOIN queries q ON m.query_id = q.id
         WHERE m.created_at >= %s AND m.created_at <= %s
-        AND m.response IS NOT NULL
+        GROUP BY brand_name
+        HAVING brand_name IS NOT NULL AND COUNT(*) > 0
+        ORDER BY current_mentions DESC, avg_sentiment DESC
         LIMIT 10
         """
         
-        cur.execute(competitor_query, [filters['start_date'], filters['end_date']])
-        recent_mentions = cur.fetchall()
+        cur.execute(current_ranking_query, [filters['start_date'], filters['end_date']])
+        rows = cur.fetchall()
         
-        # Buscar menciones de competidores en respuestas recientes
-        competitor_brands = ['oreo', 'chips ahoy', 'pepperidge farm', 'nabisco', 'keebler']
-        found_competitors = set()
-        
-        for mention in recent_mentions:
-            response_text = mention[0].lower()
-            for brand in competitor_brands:
-                if brand in response_text:
-                    found_competitors.add(brand.title())
-        
-        if found_competitors:
-            alerts.append({
-                "id": alert_id,
-                "title": "New competitor mention",
-                "description": f"Brand mentioned alongside competitor in {len(found_competitors)}+ posts",
-                "priority": "medium",
-                "status": "resolved" if len(found_competitors) > 2 else "active",
-                "source": "Competitor Analysis",
-                "created_at": (filters['end_date'] - timedelta(hours=5)).strftime('%Y-%m-%d %H:%M'),
-                "metadata": {
-                    "competitors": list(found_competitors),
-                    "mention_count": len(found_competitors)
-                }
-            })
-            alert_id += 1
-        
-        # 3. ALERTA: Volumen threshold excedido
-        volume_query = """
-        SELECT COUNT(*) as total_mentions
-        FROM mentions m
-        WHERE m.created_at >= %s AND m.created_at <= %s
-        """
-        
-        cur.execute(volume_query, [filters['start_date'], filters['end_date']])
-        volume_result = cur.fetchone()
-        total_volume = volume_result[0] or 0
-        
-        # Threshold dinámico basado en rango de tiempo
-        if filters['range'] == '24h':
-            threshold = 50
-        elif filters['range'] == '7d':
-            threshold = 100
-        else:
-            threshold = 200
-        
-        if total_volume > threshold:
-            alerts.append({
-                "id": alert_id,
-                "title": "Volume threshold exceeded",
-                "description": f"Mention volume exceeded {threshold} mentions/hour threshold",
-                "priority": "low",
-                "status": "active",
-                "source": "Volume Monitor",
-                "created_at": (filters['end_date'] - timedelta(hours=1)).strftime('%Y-%m-%d %H:%M'),
-                "metadata": {
-                    "current_volume": total_volume,
-                    "threshold": threshold,
-                    "period": filters['range']
-                }
-            })
-            alert_id += 1
-        
-        # Si no hay alertas reales, crear una informativa
-        if not alerts:
-            alerts.append({
-                "id": 1,
-                "title": "System monitoring active",
-                "description": "No critical alerts detected in the current time period",
-                "priority": "info",
-                "status": "resolved",
-                "source": "System Monitor",
-                "created_at": filters['end_date'].strftime('%Y-%m-%d %H:%M'),
-                "metadata": {
-                    "period_analyzed": filters['range'],
-                    "mentions_analyzed": total_volume
-                }
+        ranking_moves = []
+        for i, row in enumerate(rows):
+            brand_name = row[0]
+            mentions = row[1]
+            sentiment = float(row[2]) if row[2] else 0.0
+            
+            # Simular delta basado en sentimiento y posición
+            if sentiment > 0.1:
+                delta = 1
+            elif sentiment < -0.1:
+                delta = -1
+            else:
+                delta = 0
+            
+            ranking_moves.append({
+                "pos": i + 1,
+                "name": brand_name,
+                "delta": delta,
+                "mentions": mentions,
+                "sentiment": sentiment
             })
         
         cur.close()
         conn.close()
         
         return jsonify({
-            "alerts": alerts,
-            "summary": {
-                "total": len(alerts),
-                "high_priority": len([a for a in alerts if a['priority'] == 'high']),
-                "active": len([a for a in alerts if a['status'] == 'active'])
-            },
+            "ranking": ranking_moves,
             "debug": {
                 "filters_applied": filters,
-                "total_mentions_period": total_volume
+                "brands_found": len(ranking_moves)
             }
         })
         
     except Exception as e:
-        print(f"Error en alerts: {str(e)}")
-        return jsonify({"alerts": [], "error": str(e)}), 500
+        print(f"Error en industry ranking: {str(e)}")
+        return jsonify({"error": str(e)}), 500
 
 
-@app.route('/api/industry/share-of-voice', methods=['GET'])
-def get_share_of_voice():
-    """Share of Voice basado en competidores"""
+@app.route('/api/industry/competitors', methods=['GET'])
+def get_industry_competitors():
+    """Obtener scatter de competidores basado en datos reales"""
     try:
         filters = parse_filters(request)
         
-        # Datos de fallback simples
-        data = [
-            {"brand": "Lotus Biscoff", "percentage": 25.0, "mentions": 5},
-            {"brand": "Oreo", "percentage": 20.0, "mentions": 4},
-            {"brand": "Chips Ahoy", "percentage": 18.0, "mentions": 3},
-            {"brand": "Keebler", "percentage": 15.0, "mentions": 3},
-            {"brand": "Others", "percentage": 22.0, "mentions": 4}
-        ]
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        # Obtener competidores basados en análisis de marcas en insights
+        competitors_query = """
+        SELECT 
+            CASE 
+                WHEN m.response ILIKE '%oreo%' THEN 'Oreo'
+                WHEN m.response ILIKE '%chips ahoy%' THEN 'Chips Ahoy'
+                WHEN m.response ILIKE '%pepperidge%' THEN 'Pepperidge Farm'
+                WHEN m.response ILIKE '%girl scout%' THEN 'Girl Scout'
+                WHEN m.response ILIKE '%nabisco%' THEN 'Nabisco'
+                WHEN m.response ILIKE '%keebler%' THEN 'Keebler'
+                WHEN m.response ILIKE '%tate%' THEN 'Tates'
+                WHEN m.response ILIKE '%famous amos%' THEN 'Famous Amos'
+                WHEN m.response ILIKE '%milano%' THEN 'Milano'
+                WHEN m.response ILIKE '%archway%' THEN 'Archway'
+                ELSE 'Other'
+            END as brand_name,
+            AVG(m.sentiment) as avg_sentiment,
+            COUNT(*) as mentions
+        FROM mentions m
+        WHERE m.created_at >= %s AND m.created_at <= %s
+        AND (
+            m.response ILIKE '%cookie%' OR 
+            m.response ILIKE '%galleta%' OR
+            m.response ILIKE '%biscuit%'
+        )
+        GROUP BY brand_name
+        HAVING brand_name != 'Other' AND COUNT(*) >= 1
+        ORDER BY mentions DESC, avg_sentiment DESC
+        LIMIT 15
+        """
+        
+        cur.execute(competitors_query, [filters['start_date'], filters['end_date']])
+        rows = cur.fetchall()
+        
+        competitors = []
+        for row in rows:
+            brand_name = row[0]
+            sentiment = float(row[1]) if row[1] else 0.0
+            mentions = row[2]
+            
+            competitors.append({
+                "name": brand_name,
+                "sentiment_avg": sentiment,
+                "mentions": mentions,
+                "logo": f"/placeholder.svg?height=40&width=40&text={brand_name.replace(' ', '+')}"
+            })
+        
+        cur.close()
+        conn.close()
         
         return jsonify({
-            "data": data,
-            "total_mentions": sum(item["mentions"] for item in data),
-            "days_with_data": 7
+            "competitors": competitors,
+            "debug": {
+                "filters_applied": filters,
+                "total_found": len(competitors)
+            }
         })
         
     except Exception as e:
-        return jsonify({"data": [], "error": str(e)}), 500
+        print(f"Error en industry competitors: {str(e)}")
+        return jsonify({"error": str(e)}), 500
 
+@app.route('/api/industry/share-of-voice', methods=['GET'])
+def get_share_of_voice():
+    """Obtener share of voice basado en menciones reales por día"""
+    try:
+        filters = parse_filters(request)
+        
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        # Obtener menciones por día y marca
+        sov_query = """
+        SELECT 
+            DATE(m.created_at) as date,
+            CASE 
+                WHEN m.response ILIKE '%oreo%' THEN 'Oreo'
+                WHEN m.response ILIKE '%chips ahoy%' THEN 'Chips Ahoy'
+                WHEN m.response ILIKE '%pepperidge%' THEN 'Pepperidge Farm'
+                WHEN m.response ILIKE '%girl scout%' THEN 'Girl Scout'
+                WHEN m.response ILIKE '%nabisco%' THEN 'Nabisco'
+                WHEN m.response ILIKE '%keebler%' THEN 'Keebler'
+                ELSE 'Other'
+            END as brand,
+            COUNT(*) as daily_mentions
+        FROM mentions m
+        WHERE m.created_at >= %s AND m.created_at <= %s
+        AND (m.response ILIKE '%cookie%' OR m.response ILIKE '%galleta%' OR m.response ILIKE '%biscuit%')
+        GROUP BY DATE(m.created_at), brand
+        HAVING brand != 'Other'
+        ORDER BY date, daily_mentions DESC
+        """
+        
+        cur.execute(sov_query, [filters['start_date'], filters['end_date']])
+        rows = cur.fetchall()
+        
+        # Procesar datos para obtener porcentajes por día
+        daily_data = {}
+        for row in rows:
+            date_str = row[0].strftime('%b %d')
+            brand = row[1]
+            mentions = row[2]
+            
+            if date_str not in daily_data:
+                daily_data[date_str] = {}
+            daily_data[date_str][brand] = mentions
+        
+        # Calcular porcentajes
+        sov_data = []
+        for date_str, brands in daily_data.items():
+            total_mentions = sum(brands.values())
+            day_entry = {"date": date_str}
+            
+            for brand, mentions in brands.items():
+                percentage = (mentions / total_mentions) * 100 if total_mentions > 0 else 0
+                day_entry[brand] = round(percentage, 1)
+            
+            sov_data.append(day_entry)
+        
+        # Ordenar por fecha
+        sov_data.sort(key=lambda x: x["date"])
+        
+        cur.close()
+        conn.close()
+        
+        return jsonify({
+            "sov_data": sov_data,
+            "debug": {
+                "filters_applied": filters,
+                "days_found": len(sov_data)
+            }
+        })
+        
+    except Exception as e:
+        print(f"Error en share of voice: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/industry/ranking', methods=['GET'])
+def get_industry_ranking():
+    """Obtener ranking de movimientos basado en datos reales"""
+    try:
+        filters = parse_filters(request)
+        
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        # Obtener ranking actual
+        current_ranking_query = """
+        SELECT 
+            CASE 
+                WHEN m.response ILIKE '%oreo%' THEN 'Oreo'
+                WHEN m.response ILIKE '%chips ahoy%' THEN 'Chips Ahoy'
+                WHEN m.response ILIKE '%pepperidge%' THEN 'Pepperidge Farm'
+                WHEN m.response ILIKE '%girl scout%' THEN 'Girl Scout Cookies'
+                WHEN m.response ILIKE '%nabisco%' THEN 'Nabisco'
+                WHEN m.response ILIKE '%keebler%' THEN 'Keebler'
+                WHEN m.response ILIKE '%tate%' THEN 'Tates'
+                WHEN m.response ILIKE '%famous amos%' THEN 'Famous Amos'
+                WHEN m.response ILIKE '%milano%' THEN 'Milano'
+                WHEN m.response ILIKE '%archway%' THEN 'Archway'
+                ELSE q.brand
+            END as brand_name,
+            COUNT(*) as current_mentions,
+            AVG(m.sentiment) as avg_sentiment
+        FROM mentions m
+        JOIN queries q ON m.query_id = q.id
+        WHERE m.created_at >= %s AND m.created_at <= %s
+        GROUP BY brand_name
+        HAVING brand_name IS NOT NULL AND COUNT(*) > 0
+        ORDER BY current_mentions DESC, avg_sentiment DESC
+        LIMIT 10
+        """
+        
+        cur.execute(current_ranking_query, [filters['start_date'], filters['end_date']])
+        rows = cur.fetchall()
+        
+        ranking_moves = []
+        for i, row in enumerate(rows):
+            brand_name = row[0]
+            mentions = row[1]
+            sentiment = float(row[2]) if row[2] else 0.0
+            
+            # Simular delta basado en sentimiento y posición
+            if sentiment > 0.1:
+                delta = 1
+            elif sentiment < -0.1:
+                delta = -1
+            else:
+                delta = 0
+            
+            ranking_moves.append({
+                "pos": i + 1,
+                "name": brand_name,
+                "delta": delta,
+                "mentions": mentions,
+                "sentiment": sentiment
+            })
+        
+        cur.close()
+        conn.close()
+        
+        return jsonify({
+            "ranking": ranking_moves,
+            "debug": {
+                "filters_applied": filters,
+                "brands_found": len(ranking_moves)
+            }
+        })
+        
+    except Exception as e:
+        print(f"Error en industry ranking: {str(e)}")
+        return jsonify({"error": str(e)}), 500
 
 
 

@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react"
 import useSWR from "swr"
 import { fetcher } from "@/libs/fetcher"
+import { useGlobalFilters, buildGlobalQueryParams } from "@/stores/use-global-filters"
 import {
   CartesianGrid,
   Legend,
@@ -30,13 +31,19 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { DeltaPill } from "@/components/delta-pill"
 
 type RankingRow = {
+  pos: number
   name: string
-  logo?: string
-  sentiment_avg?: number // -1..1
+  delta: number
   mentions?: number
+  sentiment?: number
 }
 
-type MovementRow = { pos: number; name: string; delta: number }
+type Competitor = {
+  name: string
+  logo?: string
+  sentiment_avg: number
+  mentions: number
+}
 
 // Simple deterministic brand color by name
 const COLORS = ["#10B981", "#06B6D4", "#F59E0B", "#8B5CF6", "#F43F5E"] // emerald, cyan, amber, violet, rose
@@ -46,73 +53,83 @@ function brandColor(name: string) {
   return COLORS[h % COLORS.length]
 }
 
-// Actualizado para usar marcas de galletas reales
-const SERIES = [
-  { key: "Oreo", color: "#2563eb" }, // blue-600
-  { key: "Chips Ahoy", color: "#22c55e" }, // green-500
-  { key: "Pepperidge Farm", color: "#f97316" }, // orange-500
-  { key: "Girl Scout", color: "#a855f7" }, // violet-500
-] as const
-
 function CustomDot(props: any) {
   const { cx, cy, payload } = props
-  const y = Number(payload?.y ?? 0)
-  const r = Math.max(6, Math.min(32, y / 12)) // sizeDot = y/12 (clamped)
+  
+  // Usar el número de menciones para calcular el tamaño
+  const mentions = Number(payload?.mentions ?? 1)
+  
+  // Calcular radio basado en menciones
+  // Rango: 6px (mínimo) a 24px (máximo)
+  const minRadius = 6
+  const maxRadius = 24
+  
+  // Encontrar el rango de menciones para normalizar
+  // Asumiendo un rango típico de 1-15 menciones
+  const minMentions = 1
+  const maxMentions = 15
+  
+  // Calcular radio proporcional
+  const normalizedMentions = Math.min(Math.max(mentions, minMentions), maxMentions)
+  const radiusRange = maxRadius - minRadius
+  const mentionRange = maxMentions - minMentions
+  const radius = minRadius + (radiusRange * (normalizedMentions - minMentions) / mentionRange)
+  
   return (
     <circle
       cx={cx}
       cy={cy}
-      r={r}
+      r={radius}
       fill={payload.color}
-      opacity={0.9}
-      stroke="rgba(0,0,0,0.08)"
+      opacity={0.8}
+      stroke="rgba(0,0,0,0.1)"
+      strokeWidth={1}
     />
   )
 }
 
 function TooltipContent({ active, payload }: any) {
-  if (!active || !payload?.length) return null
-  const p = payload[0]?.payload
-  if (!p) return null
-  return (
-    <div className="rounded-md border bg-popover p-3 text-popover-foreground shadow">
-      <div className="flex items-center gap-2">
-        {p.logo ? (
-          <Image
-            src={p.logo || "/placeholder.svg?height=20&width=20&query=brand+logo"}
-            alt={p.name}
-            width={20}
-            height={20}
-            className="rounded-sm"
-          />
-        ) : (
-          <div className="h-5 w-5 rounded-sm bg-muted" />
-        )}
-        <div className="font-medium">{p.name}</div>
+  if (active && payload && payload.length) {
+    const data = payload[0].payload
+    return (
+      <div className="bg-white p-3 border rounded shadow-lg">
+        <p className="font-semibold">{data.name}</p>
+        <p className="text-sm text-muted-foreground">
+          Sentimiento: {Number(data.x).toFixed(3)}
+        </p>
+        <p className="text-sm text-muted-foreground">
+          Menciones: {data.mentions}
+        </p>
       </div>
-      <div className="mt-2 text-xs text-muted-foreground">
-        {"Sent: "}{Number(p.x).toFixed(2)}
-        {", Mentions: "}{Number(p.y).toLocaleString()}
-      </div>
-    </div>
-  )
+    )
+  }
+  return null
 }
 
 export default function IndustryPage() {
-  const [range, setRange] = useState<"7d" | "30d" | "90d">("30d")
-  const { data } = useSWR<{ ranking?: any[] }>("/api/visibility", fetcher)
-
-  const { data: sov, isLoading: sovLoading } = useSWR<any[]>(
-    "/api/mentions?range=90d",
-    fetcher
-  )
-
-  const { data: moves, isLoading: movesLoading } = useSWR<MovementRow[]>(
-    "/api/visibility?range=7d",
-    fetcher
-  )
-
+  const globalFilters = useGlobalFilters()
+  const [localRange, setLocalRange] = useState<"7d" | "30d" | "90d">("30d")
   const [hidden, setHidden] = useState<Set<string>>(new Set())
+  
+  // Construir query params desde filtros globales
+  const globalParams = buildGlobalQueryParams(globalFilters)
+  
+  // ✅ CORREGIDO: Usar endpoints reales con filtros globales
+  const { data: competitorsData, isLoading: competitorsLoading } = useSWR(
+    `/api/industry/competitors?${globalParams}`,
+    fetcher
+  )
+
+  const { data: sovData, isLoading: sovLoading } = useSWR(
+    `/api/industry/share-of-voice?${globalParams}`,
+    fetcher
+  )
+
+  const { data: rankingData, isLoading: rankingLoading } = useSWR(
+    `/api/industry/ranking?${globalParams}`,
+    fetcher
+  )
+
   const toggleKey = (k: string) =>
     setHidden((prev) => {
       const next = new Set(prev)
@@ -121,61 +138,45 @@ export default function IndustryPage() {
       return next
     })
 
-  // Mapear datos reales de /api/visibility a formato esperado
-  const rows = data?.ranking?.length ? 
-    data.ranking.map((item: any) => ({
-      name: item.name,
-      logo: item.logo,
-      sentiment_avg: (item.delta || 0) / 100, // Convertir delta a sentimiento
-      mentions: (item.score || 0) * 10 // Convertir score a número de menciones
-    })) :
-    [
-      { name: "Oreo", logo: "/placeholder.svg", sentiment_avg: 0.15, mentions: 150 },
-      { name: "Chips Ahoy!", logo: "/placeholder.svg", sentiment_avg: 0.08, mentions: 80 },
-      { name: "Pepperidge Farm", logo: "/placeholder.svg", sentiment_avg: 0.03, mentions: 30 },
-      { name: "Girl Scout Cookies", logo: "/placeholder.svg", sentiment_avg: -0.02, mentions: 20 },
-      { name: "Tate's", logo: "/placeholder.svg", sentiment_avg: -0.08, mentions: 10 }
-    ]
-
-  // Prepare points: { x, y, name, logo, color }
+  // ✅ CORREGIDO: Usar datos reales del backend
+  const competitors: Competitor[] = competitorsData?.competitors || []
+  
+  // Prepare points para el scatter chart
   const points = useMemo(
     () =>
-      rows.map((r) => ({
-        x: Number(r.sentiment_avg ?? 0),
-        y: Number(r.mentions ?? 0),
-        name: r.name,
-        logo: r.logo,
-        color: brandColor(r.name),
+      competitors.map((comp) => ({
+        x: Number(comp.sentiment_avg ?? 0),
+        y: Number(comp.mentions ?? 0),
+        mentions: Number(comp.mentions ?? 0), // ✅ Agregar menciones explícitamente
+        name: comp.name,
+        logo: comp.logo,
+        color: brandColor(comp.name),
       })),
-    [rows]
+    [competitors]
   )
 
-  // Datos de Share of Voice actualizados con marcas de galletas
-  const sovFallback = [
-    { date: "Aug 04", Oreo: 45, "Chips Ahoy": 25, "Pepperidge Farm": 20, "Girl Scout": 10 },
-    { date: "Aug 05", Oreo: 44, "Chips Ahoy": 26, "Pepperidge Farm": 19, "Girl Scout": 11 },
-    { date: "Aug 06", Oreo: 46, "Chips Ahoy": 24, "Pepperidge Farm": 21, "Girl Scout": 9 },
-    { date: "Aug 07", Oreo: 43, "Chips Ahoy": 27, "Pepperidge Farm": 18, "Girl Scout": 12 },
-    { date: "Aug 08", Oreo: 45, "Chips Ahoy": 25, "Pepperidge Farm": 20, "Girl Scout": 10 },
-    { date: "Aug 09", Oreo: 47, "Chips Ahoy": 23, "Pepperidge Farm": 22, "Girl Scout": 8 },
-    { date: "Aug 10", Oreo: 44, "Chips Ahoy": 26, "Pepperidge Farm": 19, "Girl Scout": 11 },
-  ]
-  const sovData = sov && Array.isArray(sov) && sov.length ? sov : sovFallback
+  // ✅ CORREGIDO: Share of Voice con datos reales - FIXED
+  const sovChartData = sovData?.data || sovData?.sov_data || []
+  
+  // Obtener todas las marcas únicas para la leyenda
+  const allBrands = useMemo(() => {
+    const brands = new Set<string>()
+    sovChartData.forEach((day: any) => {
+      Object.keys(day).forEach(key => {
+        if (key !== 'date') brands.add(key)
+      })
+    })
+    return Array.from(brands).slice(0, 6) // Máximo 6 marcas
+  }, [sovChartData])
 
-  // Datos de movimientos actualizados con marcas de galletas
-  const movesFallback: MovementRow[] = [
-    { pos: 1, name: "Oreo", delta: 0 },
-    { pos: 2, name: "Chips Ahoy!", delta: +1 },
-    { pos: 3, name: "Pepperidge Farm", delta: 0 },
-    { pos: 4, name: "Girl Scout Cookies", delta: -1 },
-    { pos: 5, name: "Tate's", delta: 0 },
-    { pos: 6, name: "Keebler", delta: +1 },
-    { pos: 7, name: "Nabisco", delta: -1 },
-    { pos: 8, name: "Famous Amos", delta: 0 },
-    { pos: 9, name: "Milano", delta: 0 },
-    { pos: 10, name: "Archway", delta: +1 },
-  ]
-  const moveRows = (moves?.length ? moves : movesFallback).slice(0, 10)
+  // Crear serie con colores dinámicos
+  const SERIES = allBrands.map((brand, index) => ({
+    key: brand,
+    color: COLORS[index % COLORS.length]
+  }))
+
+  // ✅ CORREGIDO: Ranking con datos reales
+  const rankingRows: RankingRow[] = rankingData?.ranking || []
 
   // Custom clickable legend
   function SOVLegend() {
@@ -207,120 +208,137 @@ export default function IndustryPage() {
 
   return (
     <div className="space-y-6">
-      {/* Encabezado + selector rango */}
+      {/* Encabezado */}
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-lg font-semibold">Industry – Competitor Map</h2>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline">
-              {range === "7d" ? "Last 7d" : range === "90d" ? "Last 90d" : "Last 30d"}
-              <ChevronDown className="ml-2 h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => setRange("7d")}>Last 7d</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setRange("30d")}>Last 30d</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setRange("90d")}>Last 90d</DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <div className="text-sm text-muted-foreground">
+          Filtros globales aplicados: {globalFilters.timeRange}
+        </div>
       </div>
 
-      {/* Gráfica en Card padd-6 con sombra */}
+      {/* Competitor Scatter */}
       <Card className="shadow">
         <CardHeader className="pb-2">
-          <CardTitle className="text-base">Competitor scatter</CardTitle>
+          <CardTitle className="text-base">
+            Competitor scatter
+            {competitorsLoading && (
+              <span className="ml-2 text-sm text-muted-foreground">(Cargando...)</span>
+            )}
+          </CardTitle>
         </CardHeader>
         <CardContent className="p-6">
-          <ResponsiveContainer width="100%" height={380}>
-            <ScatterChart margin={{ top: 12, right: 24, bottom: 24, left: 8 }}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis
-                type="number"
-                dataKey="x"
-                domain={[-1, 1]}
-                label={{ value: "Sentimiento medio", position: "insideBottom", offset: -10 }}
-              />
-              <YAxis
-                type="number"
-                dataKey="y"
-                label={{ value: "Menciones", angle: -90, position: "insideLeft" }}
-              />
-              <Tooltip content={<TooltipContent />} cursor={{ strokeDasharray: "3 3" }} />
-              <Legend verticalAlign="top" align="right" />
-              <Scatter name="Competitors" data={points} shape={<CustomDot />} />
-            </ScatterChart>
-          </ResponsiveContainer>
-        </CardContent>
-      </Card>
-
-      <Card className="shadow">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base">Share of Voice – últimos 90 días</CardTitle>
-        </CardHeader>
-        <CardContent className="p-6">
-          <SOVLegend />
-          <ChartWrapper className="h-[260px]">
-            <AreaChart data={sovData} margin={{ top: 10, right: 16, bottom: 0, left: -10 }}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="date" />
-              <YAxis unit="%" domain={[0, 100]} />
-              <Tooltip
-                formatter={(value: number, name: string) => [`${Number(value).toFixed(0)}%`, name]}
-                labelFormatter={(label: string) => `Fecha: ${label}`}
-              />
-              {/* Stacked areas; only render if not hidden */}
-              {SERIES.map((s) =>
-                hidden.has(s.key) ? null : (
-                  <Area
-                    key={s.key}
-                    type="monotone"
-                    dataKey={s.key}
-                    stackId="1"
-                    stroke={s.color}
-                    fill={s.color}
-                    fillOpacity={0.2}
-                    strokeWidth={2}
-                    dot={false}
-                    isAnimationActive={false}
-                  />
-                )
-              )}
-            </AreaChart>
-          </ChartWrapper>
-          {sovLoading && (
-            <div className="mt-2 text-sm text-muted-foreground">Cargando series de Share of Voice…</div>
+          {competitors.length > 0 ? (
+            <ResponsiveContainer width="100%" height={380}>
+              <ScatterChart margin={{ top: 12, right: 24, bottom: 24, left: 8 }}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis
+                  type="number"
+                  dataKey="x"
+                  domain={[-1, 1]}
+                  label={{ value: "Sentimiento medio", position: "insideBottom", offset: -10 }}
+                />
+                <YAxis
+                  type="number"
+                  dataKey="y"
+                  label={{ value: "Menciones", angle: -90, position: "insideLeft" }}
+                />
+                <Tooltip content={<TooltipContent />} cursor={{ strokeDasharray: "3 3" }} />
+                <Legend verticalAlign="top" align="right" />
+                <Scatter name="Competitors" data={points} shape={<CustomDot />} />
+              </ScatterChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-[380px] flex items-center justify-center text-muted-foreground">
+              {competitorsLoading ? "Cargando competidores..." : "No hay datos de competidores para el período seleccionado"}
+            </div>
           )}
         </CardContent>
       </Card>
+
+      {/* Share of Voice */}
       <Card className="shadow">
         <CardHeader className="pb-2">
-          <CardTitle className="text-base">Movimientos de Ranking</CardTitle>
+          <CardTitle className="text-base">
+            Share of Voice – {globalFilters.timeRange}
+            {sovLoading && (
+              <span className="ml-2 text-sm text-muted-foreground">(Cargando...)</span>
+            )}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-6">
+          {SERIES.length > 0 && <SOVLegend />}
+          <ChartWrapper className="h-[260px]">
+            {sovChartData.length > 0 ? (
+              <AreaChart data={sovChartData} margin={{ top: 10, right: 16, bottom: 0, left: -10 }}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="date" />
+                <YAxis unit="%" domain={[0, 100]} />
+                <Tooltip
+                  formatter={(value: number, name: string) => [`${Number(value).toFixed(0)}%`, name]}
+                  labelFormatter={(label: string) => `Fecha: ${label}`}
+                />
+                {SERIES.map((s) =>
+                  hidden.has(s.key) ? null : (
+                    <Area
+                      key={s.key}
+                      type="monotone"
+                      dataKey={s.key}
+                      stackId="1"
+                      stroke={s.color}
+                      fill={s.color}
+                      fillOpacity={0.2}
+                      strokeWidth={2}
+                      dot={false}
+                      isAnimationActive={false}
+                    />
+                  )
+                )}
+              </AreaChart>
+            ) : (
+              <div className="h-full flex items-center justify-center text-muted-foreground">
+                {sovLoading ? "Cargando share of voice..." : "No hay datos de share of voice para el período seleccionado"}
+              </div>
+            )}
+          </ChartWrapper>
+        </CardContent>
+      </Card>
+
+      {/* Ranking Movements */}
+      <Card className="shadow">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">
+            Movimientos de Ranking
+            {rankingLoading && (
+              <span className="ml-2 text-sm text-muted-foreground">(Cargando...)</span>
+            )}
+          </CardTitle>
         </CardHeader>
         <CardContent className="p-6">
           <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-10">#</TableHead>
-                  <TableHead>Brand</TableHead>
-                  <TableHead className="w-48">Δ vs semana pasada</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {moveRows.map((r) => (
-                  <TableRow key={r.pos}>
-                    <TableCell className="font-medium">{r.pos}</TableCell>
-                    <TableCell>{r.name}</TableCell>
-                    <TableCell>
-                      <DeltaPill delta={r.delta} />
-                    </TableCell>
+            {rankingRows.length > 0 ? (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-10">#</TableHead>
+                    <TableHead>Brand</TableHead>
+                    <TableHead className="w-48">Δ vs semana pasada</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-            {movesLoading && (
-              <div className="mt-2 text-sm text-muted-foreground">
-                Cargando movimientos…
+                </TableHeader>
+                <TableBody>
+                  {rankingRows.map((r) => (
+                    <TableRow key={r.pos}>
+                      <TableCell className="font-medium">{r.pos}</TableCell>
+                      <TableCell>{r.name}</TableCell>
+                      <TableCell>
+                        <DeltaPill delta={r.delta} />
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            ) : (
+              <div className="py-8 text-center text-muted-foreground">
+                {rankingLoading ? "Cargando ranking..." : "No hay datos de ranking para el período seleccionado"}
               </div>
             )}
           </div>
