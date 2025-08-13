@@ -25,7 +25,7 @@ type TopicWord = { text: string; value: number }
 type TopicTheme = { name: string; count: number }
 type TopicsPayload = { words: TopicWord[]; themes: TopicTheme[] }
 
-// NUEVO: Interface para KPIs reales
+// ACTUALIZADO: Interface para KPIs reales del backend
 interface DashboardKPIs {
   mentions_24h: number
   mentions_24h_delta: number
@@ -52,7 +52,13 @@ export default function DashboardPage() {
     fetcher
   )
   
-  // NUEVO: Obtener menciones para KPIs reales
+  // NUEVO: Endpoint específico para KPIs del dashboard
+  const { data: dashboardKPIs, isLoading: kpisLoading } = useSWR<DashboardKPIs>(
+    `/api/dashboard-kpis?${queryParams}`, 
+    fetcher
+  )
+
+  // FALLBACK: Obtener menciones para KPIs calculados manualmente (si el endpoint falla)
   const { data: mentions24h } = useSWR<MentionsResponse>(
     `/api/mentions?range=24h&limit=1`, 
     fetcher
@@ -62,8 +68,20 @@ export default function DashboardPage() {
     fetcher
   )
 
-  // NUEVO: Calcular KPIs reales
+  // NUEVO: Fetch del endpoint correcto de marcas
+  const { data: rankingData } = useSWR<{ranking: any[]}>(
+    `/api/industry/ranking?${queryParams}`,
+    fetcher
+  )
+
+  // ACTUALIZADO: KPIs reales del backend con fallback manual
   const kpis = useMemo((): DashboardKPIs => {
+    // Priorizar datos del endpoint específico
+    if (dashboardKPIs) {
+      return dashboardKPIs
+    }
+
+    // Fallback: Calcular manualmente si el endpoint no responde
     const mentions24hCount = mentions24h?.pagination?.total || 0
     const mentionsWeekCount = mentionsWeek?.pagination?.total || 0
     const weeklyAvg = mentionsWeekCount / 7
@@ -85,12 +103,12 @@ export default function DashboardPage() {
       mentions_24h_delta: mentions24hDelta,
       positive_sentiment: positivePercentage,
       positive_sentiment_delta: sentimentDelta,
-      alerts_triggered: 3, // TODO: implementar endpoint de alerts
-      alerts_delta: -25,
-      active_queries: 12, // TODO: obtener de /api/queries
+      alerts_triggered: 0, // Sin datos reales, defaultear a 0
+      alerts_delta: 0,
+      active_queries: 0, // Sin datos reales, defaultear a 0
       queries_delta: 0
     }
-  }, [mentions24h, mentionsWeek])
+  }, [dashboardKPIs, mentions24h, mentionsWeek])
 
   // NUEVO: Serie temporal REAL del backend
   const sentimentSeries = useMemo(() => {
@@ -103,22 +121,23 @@ export default function DashboardPage() {
     }))
   }, [visibility?.series])
 
-  // CORREGIDO: Usar datos reales del endpoint visibility en lugar de mock
+  // ACTUALIZADO: Usar datos del endpoint de marcas correcto
   const ranking = useMemo(() => {
-    return visibility?.ranking || []
-  }, [visibility])
+    return rankingData?.ranking || []
+  }, [rankingData])
 
   const themeList = useMemo(() => {
     return topics?.themes || []
   }, [topics])
 
-  // NUEVO: Indicador de datos reales vs mock
+  // ACTUALIZADO: Indicador de datos reales vs mock más preciso
   const dataStatus = useMemo(() => {
     const realData = {
-      visibility: !!visibility,
-      topics: !!topics,
-      mentions: !!mentions24h,
-      ranking: (visibility?.ranking?.length || 0) > 0
+      visibility: !!visibility && visibility.visibility_score !== undefined,
+      topics: !!topics && topics.words && topics.words.length > 0,
+      mentions: !!mentions24h && mentions24h.mentions && mentions24h.mentions.length > 0,
+      ranking: !!rankingData && rankingData.ranking && rankingData.ranking.length > 0,
+      kpis: !!dashboardKPIs // Nuevo: verificar si KPIs vienen del backend
     }
     
     const realCount = Object.values(realData).filter(Boolean).length
@@ -129,14 +148,14 @@ export default function DashboardPage() {
       percentage: (realCount / totalCount) * 100,
       isFullyReal: realCount === totalCount
     }
-  }, [visibility, topics, mentions24h])
+  }, [visibility, topics, mentions24h, rankingData, dashboardKPIs])
 
   return (
     <div className="space-y-6">
       {/* Toolbar */}
       <HomeToolbar />
 
-      {/* NUEVO: Indicador de estado de datos */}
+      {/* ACTUALIZADO: Indicador de estado de datos más detallado */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <span>Active filters:</span>
@@ -160,42 +179,53 @@ export default function DashboardPage() {
           )}
         </div>
         
-        {/* Indicador de datos reales */}
-        <div className={`flex items-center gap-2 text-xs px-3 py-1 rounded-full ${
-          dataStatus.isFullyReal 
-            ? 'bg-green-100 text-green-700' 
-            : 'bg-yellow-100 text-yellow-700'
-        }`}>
-          <div className={`w-2 h-2 rounded-full ${
-            dataStatus.isFullyReal ? 'bg-green-500' : 'bg-yellow-500'
-          }`} />
-          {dataStatus.isFullyReal ? 'Real Data' : `${dataStatus.percentage.toFixed(0)}% Real Data`}
+        {/* Indicador de datos reales mejorado */}
+        <div className="flex items-center gap-3">
+          {/* Breakdown detallado */}
+          <div className="hidden md:flex items-center gap-1 text-xs">
+            <span className={`w-2 h-2 rounded-full ${dataStatus.visibility ? 'bg-green-500' : 'bg-red-500'}`} title="Visibility API" />
+            <span className={`w-2 h-2 rounded-full ${dataStatus.topics ? 'bg-green-500' : 'bg-red-500'}`} title="Topics API" />
+            <span className={`w-2 h-2 rounded-full ${dataStatus.mentions ? 'bg-green-500' : 'bg-red-500'}`} title="Mentions API" />
+            <span className={`w-2 h-2 rounded-full ${dataStatus.kpis ? 'bg-green-500' : 'bg-orange-500'}`} title="KPIs API" />
+          </div>
+          
+          {/* Indicador principal */}
+          <div className={`flex items-center gap-2 text-xs px-3 py-1 rounded-full ${
+            dataStatus.isFullyReal 
+              ? 'bg-green-100 text-green-700' 
+              : 'bg-yellow-100 text-yellow-700'
+          }`}>
+            <div className={`w-2 h-2 rounded-full ${
+              dataStatus.isFullyReal ? 'bg-green-500' : 'bg-yellow-500'
+            }`} />
+            {dataStatus.isFullyReal ? 'Real Data' : `${dataStatus.percentage.toFixed(0)}% Real Data`}
+          </div>
         </div>
       </div>
 
-      {/* KPI Cards - AHORA CON DATOS REALES */}
+      {/* KPI Cards - AHORA 100% CON DATOS REALES */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <KpiCard 
           title="Mentions (24h)" 
-          value={kpis.mentions_24h.toLocaleString()} 
+          value={kpisLoading ? "..." : kpis.mentions_24h.toLocaleString()} 
           change={kpis.mentions_24h_delta} 
           icon={MessageSquare} 
         />
         <KpiCard 
           title="Positive Sentiment" 
-          value={`${kpis.positive_sentiment.toFixed(1)}%`} 
+          value={kpisLoading ? "..." : `${kpis.positive_sentiment.toFixed(1)}%`} 
           change={kpis.positive_sentiment_delta} 
           icon={TrendingUp} 
         />
         <KpiCard 
           title="Alerts Triggered" 
-          value={kpis.alerts_triggered.toString()} 
+          value={kpisLoading ? "..." : kpis.alerts_triggered.toString()} 
           change={kpis.alerts_delta} 
           icon={AlertTriangle} 
         />
         <KpiCard 
           title="Active Queries" 
-          value={kpis.active_queries.toString()} 
+          value={kpisLoading ? "..." : kpis.active_queries.toString()} 
           change={kpis.queries_delta} 
           icon={Search} 
         />
@@ -251,144 +281,20 @@ export default function DashboardPage() {
         </p>
       </div>
 
+      {/* LAYOUT CORRECTO: Izquierda (Visibility + Top Themes) | Derecha (Brand Ranking) */}
       {visibilityLoading ? (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Card>
-            <CardHeader>
-              <Skeleton className="h-5 w-40" />
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <Skeleton className="h-10 w-32" />
-              <Skeleton className="h-6 w-44 rounded-full" />
-              <Skeleton className="h-[150px] w-full" />
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <Skeleton className="h-5 w-56" />
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {Array.from({ length: 5 }).map((_, i) => (
-                  <div key={i} className="flex items-center justify-between gap-4">
-                    <Skeleton className="h-5 w-6" />
-                    <div className="flex items-center gap-3 flex-1">
-                      <Skeleton className="h-8 w-8 rounded-full" />
-                      <Skeleton className="h-4 w-40" />
-                    </div>
-                    <Skeleton className="h-6 w-28 rounded-full" />
-                    <Skeleton className="h-4 w-12" />
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* 1) Visibility score - DATOS REALES */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base">
-                Visibility score
-                {!dataStatus.visibility && (
-                  <span className="ml-2 text-xs text-orange-600">(No real data)</span>
-                )}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center gap-3">
-                <div className="text-4xl font-bold tabular-nums">
-                  {(visibility?.visibility_score ?? 0).toFixed(1)}%
-                </div>
-                <DeltaPill delta={visibility?.delta ?? 0} />
-              </div>
-              <ChartWrapper className="h-[150px]">
-                <ComposedChart data={visibility?.series ?? []} margin={{ left: -20, right: 0, top: 10, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="visGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#16a34a" stopOpacity={0.35} />
-                      <stop offset="100%" stopColor="#16a34a" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <XAxis dataKey="date" tickLine={false} axisLine={false} />
-                  <YAxis hide domain={[0, 100]} />
-                  <Tooltip formatter={(v: number) => `${Number(v).toFixed(1)}%`} />
-                  <Area type="monotone" dataKey="score" stroke="#16a34a" strokeWidth={2} fill="url(#visGradient)" />
-                </ComposedChart>
-              </ChartWrapper>
-            </CardContent>
-          </Card>
-
-          {/* 2) Brand Industry Ranking - DATOS REALES */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base">
-                Brand Industry Ranking
-                {!dataStatus.ranking && (
-                  <span className="ml-2 text-xs text-orange-600">(No real data)</span>
-                )}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-10">#</TableHead>
-                    <TableHead>Brand</TableHead>
-                    <TableHead className="w-40">Delta</TableHead>
-                    <TableHead className="w-20 text-right">Score</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {ranking.length > 0 ? ranking.map((row) => (
-                    <TableRow key={row.position}>
-                      <TableCell className="font-medium">{row.position}</TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-3">
-                          <Avatar className="h-8 w-8">
-                            <AvatarImage src={row.logo || "/placeholder.svg"} alt={row.name} />
-                            <AvatarFallback>
-                              {row.name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()}
-                            </AvatarFallback>
-                          </Avatar>
-                          <span className="whitespace-nowrap">{row.name}</span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <DeltaPill delta={row.delta} className="whitespace-nowrap" />
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums">{row.score.toFixed(1)}%</TableCell>
-                    </TableRow>
-                  )) : (
-                    <TableRow>
-                      <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
-                        No ranking data available - Check backend connection
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
-      {/* Topic visibility */}
-      <div className="space-y-2">
-        <h2 className="text-lg font-semibold">Topic visibility</h2>
-      </div>
-
-      {topicsLoading ? (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <div className="lg:col-span-2">
-            <Skeleton className="h-[260px] w-full" />
-          </div>
-          <div className="lg:col-span-1">
+          <div className="space-y-6">
             <Card>
-              <CardHeader>
-                <Skeleton className="h-5 w-28" />
-              </CardHeader>
+              <CardHeader><Skeleton className="h-5 w-40" /></CardHeader>
+              <CardContent className="space-y-4">
+                <Skeleton className="h-10 w-32" />
+                <Skeleton className="h-6 w-44 rounded-full" />
+                <Skeleton className="h-[150px] w-full" />
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader><Skeleton className="h-5 w-28" /></CardHeader>
               <CardContent className="space-y-3">
                 {Array.from({ length: 6 }).map((_, i) => (
                   <div key={i} className="flex items-center">
@@ -400,21 +306,69 @@ export default function DashboardPage() {
               </CardContent>
             </Card>
           </div>
+          <div>
+            <Card className="h-full">
+              <CardHeader><Skeleton className="h-5 w-56" /></CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {Array.from({ length: 10 }).map((_, i) => (
+                    <div key={i} className="flex items-center justify-between gap-4">
+                      <Skeleton className="h-5 w-6" />
+                      <div className="flex items-center gap-3 flex-1">
+                        <Skeleton className="h-8 w-8 rounded-full" />
+                        <Skeleton className="h-4 w-40" />
+                      </div>
+                      <Skeleton className="h-6 w-28 rounded-full" />
+                      <Skeleton className="h-4 w-12" />
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <div className="lg:col-span-2 border rounded-xl p-3">
-            <div className="relative">
-              <WordCloud words={topics?.words || []} height={240} />
-              {!dataStatus.topics && (
-                <div className="absolute top-2 right-2 text-xs text-orange-600 bg-orange-50 px-2 py-1 rounded">
-                  No real data
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-full">
+          {/* IZQUIERDA: Visibility score ARRIBA + Top themes ABAJO */}
+          <div className="flex flex-col space-y-6 h-full">
+            {/* 1) Visibility score - MITAD SUPERIOR */}
+            <Card className="flex-1">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">
+                  Visibility score
+                  {!dataStatus.visibility && (
+                    <span className="ml-2 text-xs text-orange-600">(No real data)</span>
+                  )}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4 h-full flex flex-col">
+                <div className="flex items-center gap-3">
+                  <div className="text-4xl font-bold tabular-nums">
+                    {(visibility?.visibility_score ?? 0).toFixed(1)}%
+                  </div>
+                  <DeltaPill delta={visibility?.delta ?? 0} />
                 </div>
-              )}
-            </div>
-          </div>
-          <div className="lg:col-span-1">
-            <Card>
+                <div className="flex-1">
+                  <ChartWrapper className="h-full min-h-[120px]">
+                    <ComposedChart data={visibility?.series ?? []} margin={{ left: -20, right: 0, top: 10, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="visGradient" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#16a34a" stopOpacity={0.35} />
+                          <stop offset="100%" stopColor="#16a34a" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <XAxis dataKey="date" tickLine={false} axisLine={false} />
+                      <YAxis hide domain={[0, 100]} />
+                      <Tooltip formatter={(v: number) => `${Number(v).toFixed(1)}%`} />
+                      <Area type="monotone" dataKey="score" stroke="#16a34a" strokeWidth={2} fill="url(#visGradient)" />
+                    </ComposedChart>
+                  </ChartWrapper>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* 2) Top themes - MITAD INFERIOR */}
+            <Card className="flex-1">
               <CardHeader className="pb-2">
                 <CardTitle className="text-base">
                   Top themes
@@ -425,11 +379,11 @@ export default function DashboardPage() {
               </CardHeader>
               <CardContent>
                 {themeList.length > 0 ? (
-                  <ol className="space-y-2">
+                  <ol className="space-y-3">
                     {themeList.slice(0, 6).map((t, i) => (
                       <li key={t.name} className="flex items-center text-sm">
-                        <span className="w-6 text-muted-foreground">{i + 1}.</span>
-                        <span className="ml-2">{t.name}</span>
+                        <span className="w-6 text-muted-foreground font-medium">{i + 1}.</span>
+                        <span className="ml-2 flex-1 truncate">{t.name}</span>
                         <span className="ml-auto inline-flex items-center justify-center rounded-full bg-muted px-2 py-0.5 text-xs">
                           {t.count}
                         </span>
@@ -443,6 +397,132 @@ export default function DashboardPage() {
                 )}
               </CardContent>
             </Card>
+          </div>
+
+          {/* DERECHA: Brand Industry Ranking - ALTURA COMPLETA */}
+          <div className="h-full">
+            <Card className="h-full">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">
+                  Brand Industry Ranking
+                  {!dataStatus.ranking && (
+                    <span className="ml-2 text-xs text-orange-600">(No real data)</span>
+                  )}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="h-full">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-10">#</TableHead>
+                      <TableHead>Brand</TableHead>
+                      <TableHead className="w-40">Delta</TableHead>
+                      <TableHead className="w-20 text-right">Score</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {ranking.length > 0 ? ranking.map((row) => (
+                      <TableRow key={row.position}>
+                        <TableCell className="font-medium">{row.position}</TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-3">
+                            <Avatar className="h-8 w-8">
+                              <AvatarImage src={row.logo || "/placeholder.svg"} alt={row.name} />
+                              <AvatarFallback>
+                                {row.name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()}
+                              </AvatarFallback>
+                            </Avatar>
+                            <span className="whitespace-nowrap text-sm">{row.name}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <DeltaPill delta={row.delta} className="whitespace-nowrap" />
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">{row.score.toFixed(1)}%</TableCell>
+                      </TableRow>
+                    )) : (
+                      <TableRow>
+                        <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
+                          No ranking data available - Check backend connection
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      )}
+
+      {/* Topic visibility - FULL WIDTH ABAJO */}
+      <div className="space-y-2">
+        <h2 className="text-lg font-semibold">Topic visibility</h2>
+      </div>
+
+      {topicsLoading ? (
+        <div className="w-full">
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+            <div className="lg:col-span-3">
+              <Skeleton className="h-[260px] w-full" />
+            </div>
+            <div className="lg:col-span-1">
+              <Card>
+                <CardHeader>
+                  <Skeleton className="h-5 w-28" />
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {Array.from({ length: 6 }).map((_, i) => (
+                    <div key={i} className="flex items-center">
+                      <Skeleton className="h-4 w-6" />
+                      <Skeleton className="ml-3 h-4 w-40" />
+                      <Skeleton className="ml-auto h-6 w-10 rounded-full" />
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="w-full">
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+            <div className="lg:col-span-3 border rounded-xl p-3">
+              <div className="relative">
+                <WordCloud words={topics?.words || []} height={240} />
+                {!dataStatus.topics && (
+                  <div className="absolute top-2 right-2 text-xs text-orange-600 bg-orange-50 px-2 py-1 rounded">
+                    No real data
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="lg:col-span-1">
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base">Word frequency</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {topics?.words && topics.words.length > 0 ? (
+                    <ol className="space-y-2">
+                      {topics.words.slice(0, 8).map((word, i) => (
+                        <li key={word.text} className="flex items-center text-sm">
+                          <span className="w-6 text-muted-foreground">{i + 1}.</span>
+                          <span className="ml-2 flex-1 truncate">{word.text}</span>
+                          <span className="ml-auto inline-flex items-center justify-center rounded-full bg-muted px-2 py-0.5 text-xs">
+                            {word.value}
+                          </span>
+                        </li>
+                      ))}
+                    </ol>
+                  ) : (
+                    <div className="text-center text-muted-foreground py-8">
+                      No word frequency data
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
           </div>
         </div>
       )}

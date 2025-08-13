@@ -156,27 +156,37 @@ export default function IndustryPage() {
   )
 
   // ✅ CORREGIDO: Share of Voice con datos reales - FIXED
-  const sovChartData = sovData?.data || sovData?.sov_data || []
+  const sovChartData = useMemo(() => {
+    return sovData?.data || sovData?.sov_data || []
+  }, [sovData])
   
   // Obtener todas las marcas únicas para la leyenda
   const allBrands = useMemo(() => {
+    if (!Array.isArray(sovChartData)) return []
+    
     const brands = new Set<string>()
     sovChartData.forEach((day: any) => {
-      Object.keys(day).forEach(key => {
-        if (key !== 'date') brands.add(key)
-      })
+      if (day && typeof day === 'object') {
+        Object.keys(day).forEach(key => {
+          if (key !== 'date') brands.add(key)
+        })
+      }
     })
     return Array.from(brands).slice(0, 6) // Máximo 6 marcas
   }, [sovChartData])
 
   // Crear serie con colores dinámicos
-  const SERIES = allBrands.map((brand, index) => ({
-    key: brand,
-    color: COLORS[index % COLORS.length]
-  }))
+  const SERIES = useMemo(() => {
+    return allBrands.map((brand, index) => ({
+      key: brand,
+      color: COLORS[index % COLORS.length]
+    }))
+  }, [allBrands])
 
   // ✅ CORREGIDO: Ranking con datos reales
-  const rankingRows: RankingRow[] = rankingData?.ranking || []
+  const rankingRows: RankingRow[] = useMemo(() => {
+    return rankingData?.ranking || []
+  }, [rankingData])
 
   // Custom clickable legend
   function SOVLegend() {

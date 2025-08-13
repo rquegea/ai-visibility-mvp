@@ -1,10 +1,11 @@
 # Dependencies
 node_modules/
-__pycache__/
+**pycache**/
 *.pyc
 *.pyo
 *.pyd
 .Python
+vendor/
 
 # Environment variables
 .env
@@ -12,6 +13,9 @@ __pycache__/
 .env.development.local
 .env.test.local
 .env.production.local
+config.php
+database.php
+db_config.php
 
 # Virtual environments
 venv/
@@ -21,10 +25,15 @@ ENV/
 # Database
 *.db
 *.sqlite3
+*.sql
+backup.sql
+database_dump.sql
 
 # Logs
 *.log
 logs/
+error.log
+access.log
 
 # OS generated files
 .DS_Store
@@ -52,4 +61,19 @@ build/
 # Temporary files
 *.tmp
 *.temp
+
+# PHP specific
+composer.phar
+.composer/
+
+# Cache
+cache/
+tmp/
+
+# Uploads (si tienes carpeta de uploads sensibles)
+uploads/private/
+
+# Session files
+sessions/
+
 EOF
