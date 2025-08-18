@@ -79,3 +79,35 @@ export interface VisibilityByQueryResponse {
   brand: string
   queries: QueryVisibility[]
 }
+
+
+// Agregar a frontend/types.ts
+
+export interface FeatureMention {
+  id: number;
+  sentiment: number;
+  keywords_found: string[];
+  date: string;
+}
+
+export interface FeatureData {
+  feature: string;
+  category: string;
+  neg: number;
+  neu: number;
+  pos: number;
+  trend: 'up' | 'down' | 'stable';
+  topQuotes: string[];
+  mentionIds: number[];
+  predefined: boolean;
+  mentions?: FeatureMention[];
+}
+
+export interface FeatureSentimentResponse {
+  features: FeatureData[];
+  total_features: number;
+  date_range: {
+    start: string;
+    end: string;
+  };
+}

@@ -1,51 +1,15 @@
+// Crear nuevo archivo: frontend/components/feature-sentiment-matrix.tsx
+
 "use client"
 
-import { useMemo, useState } from "react"
-import useSWR from "swr"
-import { fetcher } from "@/libs/fetcher"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Skeleton } from "@/components/ui/skeleton"
-import { ChartWrapper } from "@/components/chart-wrapper"
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts"
-import { Checkbox } from "@/components/ui/checkbox"
-import { Label } from "@/components/ui/label"
-import { Alert, AlertTitle } from "@/components/ui/alert"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { 
-  TrendingUp, 
-  TrendingDown, 
-  Minus, 
-  Eye, 
-  MessageSquare, 
-  Filter,
-  CheckCircle2, 
-  Clock, 
-  AlertTriangle, 
-  Users, 
-  Target,
-  Calendar,
-  Archive,
-  RotateCcw
-} from 'lucide-react'
-
-type PainPoint = { point: string; count: number }
-type CTA = { 
-  id: number; 
-  text: string; 
-  done: boolean;
-  priority?: string;
-  category?: string;
-  created_at?: string;
-}
-
-// Types for Feature Sentiment
-interface FeatureMention {
-  id: number;
-  sentiment: number;
-  keywords_found: string[];
-  date: string;
-}
+import React, { useState, useMemo } from 'react';
+import useSWR from 'swr';
+import { fetcher } from '@/libs/fetcher';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
+import { TrendingUp, TrendingDown, Minus, Eye, MessageSquare, Filter } from 'lucide-react';
 
 interface FeatureData {
   feature: string;
@@ -57,7 +21,12 @@ interface FeatureData {
   topQuotes: string[];
   mentionIds: number[];
   predefined: boolean;
-  mentions?: FeatureMention[];
+  mentions?: Array<{
+    id: number;
+    sentiment: number;
+    keywords_found: string[];
+    date: string;
+  }>;
 }
 
 interface FeatureSentimentResponse {
@@ -69,371 +38,11 @@ interface FeatureSentimentResponse {
   };
 }
 
-// Componente CTA Mejorado y ARREGLADO
-function EnhancedCTASection() {
-  // Estados locales para gestión - SIN el estado problemático de completedTasks
-  const [filter, setFilter] = useState<'all' | 'pending' | 'completed'>('pending')
-  const [sortBy, setSortBy] = useState<'priority' | 'date' | 'category'>('priority')
-
-  // Fetch CTAs reales
-  const ctaKey = "/api/insights?type=cta&status=open"
-  const { data: ctas, isLoading: ctasLoading, mutate } = useSWR<CTA[]>(ctaKey, fetcher)
-
-  // NUEVA función simplificada para marcar/desmarcar tareas
-  async function onToggle(id: number) {
-    const currentCTA = ctas?.find(c => c.id === id)
-    if (!currentCTA) return
-
-    const newDoneStatus = !currentCTA.done
-
-    try {
-      // 1. Actualizar estado local primero (Optimistic UI)
-      const current = ctas ?? []
-      const optimisticUpdate = current.map(cta => 
-        cta.id === id ? { ...cta, done: newDoneStatus } : cta
-      )
-      mutate(optimisticUpdate, { revalidate: false })
-
-      // 2. Enviar al backend
-      const response = await fetch(`/api/insights/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ done: newDoneStatus }),
-      })
-
-      if (!response.ok) throw new Error('Failed to update')
-
-      // 3. Revalidar desde servidor
-      mutate()
-
-      console.log(`✅ Tarea ${id} ${newDoneStatus ? 'completada' : 'marcada como pendiente'}`)
-
-    } catch (error) {
-      // Rollback en caso de error
-      mutate(ctas, { revalidate: false })
-      console.error('Error al actualizar tarea:', error)
-      
-      // Mostrar error al usuario
-      alert('Error al actualizar la tarea. Inténtalo de nuevo.')
-    }
-  }
-
-  // Función para completar todas las tareas pendientes
-  async function completeAllPending() {
-    if (!ctas) return
-
-    const pendingTasks = ctas.filter(cta => !cta.done)
-    
-    try {
-      // Marcar todas como completadas en paralelo
-      const promises = pendingTasks.map(cta => 
-        fetch(`/api/insights/${cta.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ done: true }),
-        })
-      )
-
-      await Promise.all(promises)
-
-      // Revalidar después de completar todas
-      mutate()
-      
-      console.log(`✅ ${pendingTasks.length} tareas completadas`)
-
-    } catch (error) {
-      console.error('Error al completar todas las tareas:', error)
-      alert('Error al completar las tareas. Algunas pueden no haberse guardado.')
-    }
-  }
-
-  // Función para obtener categoría inteligente basada en el texto
-  const getCategoryFromText = (text: string): string => {
-    const lowerText = text.toLowerCase()
-    
-    if (lowerText.includes('analyze') || lowerText.includes('trend')) return 'analysis'
-    if (lowerText.includes('leverage') || lowerText.includes('opportunity')) return 'opportunity'
-    if (lowerText.includes('address') || lowerText.includes('risk')) return 'risk'
-    if (lowerText.includes('monitor') || lowerText.includes('track')) return 'monitoring'
-    if (lowerText.includes('expand') || lowerText.includes('consider')) return 'strategy'
-    if (lowerText.includes('demand') || lowerText.includes('interest')) return 'market'
-    
-    return 'general'
-  }
-
-  // Función para obtener ícono por categoría
-  const getCategoryIcon = (category: string) => {
-    switch (category) {
-      case 'analysis': return <TrendingUp className="w-4 h-4" />
-      case 'opportunity': return <Target className="w-4 h-4" />
-      case 'risk': return <AlertTriangle className="w-4 h-4" />
-      case 'monitoring': return <Clock className="w-4 h-4" />
-      case 'strategy': return <Users className="w-4 h-4" />
-      case 'market': return <TrendingUp className="w-4 h-4" />
-      default: return <CheckCircle2 className="w-4 h-4" />
-    }
-  }
-
-  // Función para obtener color de prioridad
-  const getPriorityColor = (priority: string) => {
-    switch (priority?.toLowerCase()) {
-      case 'high': return 'bg-red-100 text-red-700 border-red-200'
-      case 'medium': return 'bg-yellow-100 text-yellow-700 border-yellow-200'
-      case 'low': return 'bg-green-100 text-green-700 border-green-200'
-      default: return 'bg-gray-100 text-gray-700 border-gray-200'
-    }
-  }
-
-  // Procesar y filtrar CTAs - SIMPLIFICADO
-  const processedCTAs = useMemo(() => {
-    if (!ctas) return []
-
-    const enrichedCTAs = ctas.map(cta => ({
-      ...cta,
-      // Ya no necesitamos el estado local, usamos directamente cta.done
-      category: cta.category || getCategoryFromText(cta.text),
-      priority: cta.priority || 'high',
-    }))
-
-    // Filtrar por estado
-    let filtered = enrichedCTAs
-    if (filter === 'pending') {
-      filtered = enrichedCTAs.filter(cta => !cta.done)
-    } else if (filter === 'completed') {
-      filtered = enrichedCTAs.filter(cta => cta.done)
-    }
-
-    // Ordenar
-    return filtered.sort((a, b) => {
-      if (sortBy === 'priority') {
-        const priorityOrder = { high: 3, medium: 2, low: 1 }
-        return priorityOrder[b.priority as keyof typeof priorityOrder] - 
-               priorityOrder[a.priority as keyof typeof priorityOrder]
-      } else if (sortBy === 'date') {
-        return new Date(b.created_at || '').getTime() - new Date(a.created_at || '').getTime()
-      } else if (sortBy === 'category') {
-        return a.category.localeCompare(b.category)
-      }
-      return 0
-    })
-  }, [ctas, filter, sortBy])
-
-  // Estadísticas - SIMPLIFICADO
-  const stats = useMemo(() => {
-    if (!ctas) return { total: 0, completed: 0, pending: 0, completionRate: 0 }
-    
-    const total = ctas.length
-    const completed = ctas.filter(cta => cta.done).length // Usar directamente cta.done
-    const pending = total - completed
-    const completionRate = total > 0 ? Math.round((completed / total) * 100) : 0
-
-    return { total, completed, pending, completionRate }
-  }, [ctas])
-
-  return (
-    <div>
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-base font-medium">Calls to Action</h3>
-        
-        {/* Estadísticas rápidas */}
-        <div className="flex items-center gap-4 text-sm text-gray-600">
-          <span>{stats.pending} pendientes</span>
-          <span>{stats.completed} completadas</span>
-          <span className="font-medium">{stats.completionRate}% completado</span>
-        </div>
-      </div>
-
-      {/* Controles de filtros y ordenación */}
-      <div className="flex items-center gap-4 mb-4">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium">Ver:</span>
-          <select 
-            value={filter} 
-            onChange={(e) => setFilter(e.target.value as any)}
-            className="text-sm border rounded px-2 py-1 bg-white"
-          >
-            <option value="all">Todas</option>
-            <option value="pending">Pendientes</option>
-            <option value="completed">Completadas</option>
-          </select>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium">Ordenar:</span>
-          <select 
-            value={sortBy} 
-            onChange={(e) => setSortBy(e.target.value as any)}
-            className="text-sm border rounded px-2 py-1 bg-white"
-          >
-            <option value="priority">Prioridad</option>
-            <option value="date">Fecha</option>
-            <option value="category">Categoría</option>
-          </select>
-        </div>
-
-        {/* Acción rápida para marcar todas como completadas */}
-        {filter === 'pending' && processedCTAs.length > 0 && (
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={completeAllPending}
-            className="text-xs"
-            disabled={ctasLoading}
-          >
-            <CheckCircle2 className="w-3 h-3 mr-1" />
-            Completar todas
-          </Button>
-        )}
-      </div>
-
-      <Card className="shadow">
-        <CardContent className="p-6">
-          {ctasLoading ? (
-            <div className="space-y-3">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <div key={i} className="flex items-center gap-3">
-                  <Skeleton className="h-5 w-5 rounded" />
-                  <Skeleton className="h-4 flex-1" />
-                  <Skeleton className="h-6 w-16" />
-                </div>
-              ))}
-            </div>
-          ) : processedCTAs.length === 0 ? (
-            <Alert className={filter === 'completed' ? 
-              "border-green-500/50 text-green-700" : 
-              "border-blue-500/50 text-blue-700"
-            }>
-              <AlertTitle>
-                {filter === 'completed' ? 
-                  "🎉 No hay tareas completadas aún" : 
-                  filter === 'pending' ?
-                  "✅ ¡Todas las tareas están completadas!" :
-                  "📋 No hay CTAs disponibles"
-                }
-              </AlertTitle>
-              <p className="text-sm mt-2">
-                {filter === 'pending' ? 
-                  "Excelente trabajo. No hay acciones pendientes en este momento." :
-                  filter === 'completed' ?
-                  "Las tareas completadas aparecerán aquí." :
-                  "Las acciones recomendadas se generan automáticamente desde el análisis de insights."
-                }
-              </p>
-            </Alert>
-          ) : (
-            <div className="space-y-3">
-              {processedCTAs.map((cta) => (
-                <div 
-                  key={cta.id} 
-                  className={`
-                    flex items-start gap-3 p-4 border rounded-lg transition-all duration-200
-                    ${cta.done ? 
-                      'bg-green-50 border-green-200 opacity-75' : 
-                      'bg-white border-gray-200 hover:border-gray-300 hover:shadow-sm'
-                    }
-                  `}
-                >
-                  {/* Checkbox */}
-                  <Checkbox
-                    id={`cta-${cta.id}`}
-                    checked={cta.done}
-                    onCheckedChange={() => onToggle(cta.id)}
-                    className="mt-0.5"
-                    disabled={ctasLoading}
-                  />
-
-                  {/* Ícono de categoría */}
-                  <div className={`
-                    mt-0.5 p-1 rounded 
-                    ${cta.done ? 'text-green-600' : 'text-gray-600'}
-                  `}>
-                    {getCategoryIcon(cta.category || 'general')}
-                  </div>
-
-                  {/* Contenido principal */}
-                  <div className="flex-1 min-w-0">
-                    <Label
-                      htmlFor={`cta-${cta.id}`}
-                      className={`
-                        cursor-pointer leading-5 text-sm block
-                        ${cta.done ? 'line-through text-gray-500' : 'text-gray-900'}
-                      `}
-                    >
-                      {cta.text}
-                    </Label>
-                    
-                    {/* Metadata */}
-                    <div className="flex items-center gap-2 mt-2">
-                      <Badge 
-                        variant="outline" 
-                        className={`text-xs ${getPriorityColor(cta.priority || 'high')}`}
-                      >
-                        {cta.priority || 'high'}
-                      </Badge>
-                      
-                      <Badge variant="secondary" className="text-xs">
-                        {cta.category}
-                      </Badge>
-
-                      {cta.created_at && (
-                        <span className="text-xs text-gray-500 flex items-center gap-1">
-                          <Calendar className="w-3 h-3" />
-                          {new Date(cta.created_at).toLocaleDateString()}
-                        </span>
-                      )}
-                      
-                      {/* Indicador de estado actualizado */}
-                      {cta.done && (
-                        <Badge variant="outline" className="text-xs bg-green-100 text-green-700">
-                          ✓ Completada
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Acciones rápidas */}
-                  <div className="flex items-center gap-1">
-                    {cta.done && (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => onToggle(cta.id)}
-                        className="h-8 w-8 p-0 text-gray-400 hover:text-gray-600"
-                        title="Marcar como pendiente"
-                        disabled={ctasLoading}
-                      >
-                        <RotateCcw className="w-3 h-3" />
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Barra de progreso si hay tareas */}
-      {stats.total > 0 && (
-        <div className="mt-4 p-4 bg-gray-50 rounded-lg">
-          <div className="flex items-center justify-between text-sm mb-2">
-            <span className="font-medium">Progreso general</span>
-            <span>{stats.completed}/{stats.total} completadas</span>
-          </div>
-          <div className="w-full bg-gray-200 rounded-full h-2">
-            <div 
-              className="bg-green-500 h-2 rounded-full transition-all duration-300"
-              style={{ width: `${stats.completionRate}%` }}
-            />
-          </div>
-        </div>
-      )}
-    </div>
-  )
+interface FeatureSentimentMatrixProps {
+  timeRange?: string;
 }
 
-// Componente Feature Sentiment Matrix (mantener igual)
-function FeatureSentimentMatrix({ timeRange = '30d' }: { timeRange?: string }) {
+export function FeatureSentimentMatrix({ timeRange = '30d' }: FeatureSentimentMatrixProps) {
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [showPredefinedOnly, setShowPredefinedOnly] = useState(true);
   const [selectedFeature, setSelectedFeature] = useState<FeatureData | null>(null);
@@ -443,7 +52,7 @@ function FeatureSentimentMatrix({ timeRange = '30d' }: { timeRange?: string }) {
     `/api/features-sentiment?range=${timeRange}`,
     fetcher,
     {
-      refreshInterval: 30000,
+      refreshInterval: 30000, // Actualizar cada 30 segundos
       revalidateOnFocus: false
     }
   );
@@ -472,7 +81,7 @@ function FeatureSentimentMatrix({ timeRange = '30d' }: { timeRange?: string }) {
     return filtered.sort((a, b) => {
       const totalA = a.pos + a.neu + a.neg;
       const totalB = b.pos + b.neu + b.neg;
-      return totalB - totalA;
+      return totalB - totalA; // Ordenar por total de menciones
     });
   }, [data, selectedCategory, showPredefinedOnly]);
 
@@ -773,6 +382,7 @@ function FeatureSentimentMatrix({ timeRange = '30d' }: { timeRange?: string }) {
                             className="h-8 w-8 p-0"
                             title={`Ver ${feature.mentionIds.length} menciones`}
                             onClick={() => {
+                              // TODO: Implementar navegación a menciones filtradas
                               console.log('Navigate to mentions:', feature.mentionIds);
                             }}
                           >
@@ -913,61 +523,3 @@ function FeatureSentimentMatrix({ timeRange = '30d' }: { timeRange?: string }) {
     </Card>
   );
 }
-
-export default function ImprovePage() {
-  // Pain points - DATOS REALES
-  const { data: painPointsData, isLoading: painPointsLoading } = useSWR<{pain_points: PainPoint[]}>(
-    "/api/improve/pain-points?range=30d",
-    fetcher
-  )
-
-  const rows = painPointsData?.pain_points || []
-
-  return (
-    <div className="space-y-6">
-      <h2 className="text-lg font-semibold">Improve – Pain Points & Features</h2>
-
-      {/* Pain points chart - DATOS REALES */}
-      <Card className="shadow">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base">Top pain points (30d)</CardTitle>
-        </CardHeader>
-        <CardContent className="p-6">
-          {painPointsLoading ? (
-            <Skeleton className="h-[300px] w-full" />
-          ) : rows.length === 0 ? (
-            <div className="h-[300px] flex items-center justify-center text-gray-500">
-              <div className="text-center">
-                <p>No hay pain points detectados en el período seleccionado</p>
-                <p className="text-sm mt-2">Esto indica un buen nivel de satisfacción del cliente</p>
-              </div>
-            </div>
-          ) : (
-            <ChartWrapper className="h-[300px]">
-              <BarChart data={rows} layout="vertical" margin={{ top: 8, right: 16, bottom: 8, left: 12 }}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis type="number" dataKey="count" />
-                <YAxis type="category" dataKey="point" width={140} />
-                <Tooltip
-                  formatter={(v: number, name: string) => [v, name === "count" ? "Count" : name]}
-                  labelFormatter={(l) => String(l)}
-                />
-                <Bar dataKey="count" fill="#ef4444" radius={[4, 4, 4, 4]} />
-              </BarChart>
-            </ChartWrapper>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* CTAs pendientes - COMPONENTE MEJORADO Y ARREGLADO */}
-      <EnhancedCTASection />
-
-      {/* NUEVA SECCIÓN: Feature × Sentiment Matrix */}
-      <div>
-        <h3 className="text-base font-medium mb-4">Análisis de Features por Sentiment</h3>
-        <FeatureSentimentMatrix timeRange="30d" />
-      </div>
-    </div>
-  )
-}
-
