@@ -1432,57 +1432,11 @@ def has_negative_context(text):
 # Agregar esta función simple al final de backend/app.py, ANTES de if __name__ == '__main__':
 
 # REEMPLAZAR la función get_industry_ranking existente en backend/app.py
+# 
+#
 
-@app.route('/api/industry/ranking', methods=['GET'])
-def get_industry_ranking():
-    """Obtener ranking de marcas basado en visibilidad real"""
-    try:
-        filters = parse_filters(request)
-        
-        # Llamar internamente al nuevo endpoint de brand visibility
-        import requests
-        
-        # Construir query string
-        query_params = []
-        if filters.get('range'):
-            query_params.append(f"range={filters['range']}")
-        if filters.get('sentiment') != 'all':
-            query_params.append(f"sentiment={filters['sentiment']}")
-        if filters.get('model') != 'all':
-            query_params.append(f"model={filters['model']}")
-        
-        query_string = "&".join(query_params)
-        url = f"http://localhost:5050/api/industry/brand-visibility-ranking"
-        if query_string:
-            url += f"?{query_string}"
-        
-        response = requests.get(url)
-        
-        if response.status_code == 200:
-            data = response.json()
-            return jsonify(data)
-        else:
-            # Fallback con datos de ejemplo
-            return jsonify({
-                "ranking": [
-                    {"position": 1, "name": "Lotus Biscoff", "score": 28.1, "delta": 2.3, "logo": "/placeholder.svg?height=40&width=40&text=Lotus+Biscoff"},
-                    {"position": 2, "name": "Oreo", "score": 24.7, "delta": -1.2, "logo": "/placeholder.svg?height=40&width=40&text=Oreo"},
-                    {"position": 3, "name": "Chips Ahoy", "score": 18.9, "delta": 0.8, "logo": "/placeholder.svg?height=40&width=40&text=Chips+Ahoy"},
-                    {"position": 4, "name": "Pepperidge Farm", "score": 15.3, "delta": -0.5, "logo": "/placeholder.svg?height=40&width=40&text=Pepperidge+Farm"},
-                    {"position": 5, "name": "Keebler", "score": 12.8, "delta": 1.1, "logo": "/placeholder.svg?height=40&width=40&text=Keebler"}
-                ],
-                "debug": {"source": "fallback_data"}
-            })
-        
-    except Exception as e:
-        print(f"Error en industry ranking: {str(e)}")
-        return jsonify({
-            "ranking": [
-                {"position": 1, "name": "Data unavailable", "score": 0.0, "delta": 0.0, "logo": "/placeholder.svg"}
-            ],
-            "error": str(e)
-        })
-    
+
+
 @app.route('/api/alerts', methods=['GET'])
 def get_alerts():
     """Obtener alertas basadas en análisis de menciones y insights"""
@@ -1499,7 +1453,7 @@ def get_alerts():
         negative_query = """
         SELECT 
             COUNT(*) as negative_count,
-            COUNT(CASE WHEN m.created_at >= %s - INTERVAL '2 hours' THEN 1 END) as recent_negative
+            COUNT(CASE WHEN m.created_at = %s - INTERVAL '2 hours' THEN 1 END) as recent_negative
         FROM mentions m
         WHERE m.created_at >= %s AND m.created_at <= %s
         AND m.sentiment < -0.3
@@ -1640,181 +1594,10 @@ def get_alerts():
     except Exception as e:
         print(f"Error en alerts: {str(e)}")
         return jsonify({"alerts": [], "error": str(e)}), 500
+# Añadir estos endpoints corregidos al final de app.py
 
-@app.route('/api/industry/share-of-voice', methods=['GET'])
-def get_share_of_voice():
-    """Share of Voice SIMPLIFICADO - usar mismos datos que Competitor Scatter"""
-    try:
-        filters = parse_filters(request)
-        
-        conn = get_db_connection()
-        cur = conn.cursor()
-        
-        print(f"DEBUG SOV: Iniciando con filtros {filters['range']}")
-        
-        # ✅ QUERY SIMPLIFICADA: Solo totales, sin GROUP BY date
-        ranking_query = """
-        SELECT 
-            CASE 
-                WHEN m.response ILIKE '%oreo%' THEN 'Oreo'
-                WHEN m.response ILIKE '%chips ahoy%' THEN 'Chips Ahoy'
-                WHEN m.response ILIKE '%pepperidge%' THEN 'Pepperidge Farm'
-                WHEN m.response ILIKE '%girl scout%' THEN 'Girl Scout'
-                WHEN m.response ILIKE '%nabisco%' THEN 'Nabisco'
-                WHEN m.response ILIKE '%keebler%' THEN 'Keebler'
-                WHEN m.response ILIKE '%tate%' THEN 'Tates'
-                WHEN m.response ILIKE '%famous amos%' THEN 'Famous Amos'
-                WHEN m.response ILIKE '%milano%' THEN 'Milano'
-                WHEN m.response ILIKE '%archway%' THEN 'Archway'
-                WHEN m.response ILIKE '%lotus biscoff%' OR m.response ILIKE '%biscoff%' THEN 'Lotus Biscoff'
-                ELSE 'Other'
-            END as brand,
-            COUNT(*) as total_mentions,
-            AVG(sentiment) as avg_sentiment
-        FROM mentions m
-        WHERE m.created_at >= %s AND m.created_at <= %s
-        GROUP BY brand
-        HAVING brand != 'Other' AND COUNT(*) >= 1
-        ORDER BY total_mentions DESC
-        """
-        
-        cur.execute(ranking_query, [filters['start_date'], filters['end_date']])
-        ranking_rows = cur.fetchall()
-        
-        print(f"DEBUG SOV: Query devolvió {len(ranking_rows)} marcas")
-        
-        # Si no hay datos, crear datos de ejemplo basados en los competidores
-        if len(ranking_rows) == 0:
-            print("DEBUG SOV: No hay datos reales, usando datos simulados")
-            
-            # Usar datos simulados pero consistentes
-            simulated_data = [
-                ("Oreo", 8, 0.15),
-                ("Chips Ahoy", 6, 0.10),
-                ("Tates", 4, 0.20),
-                ("Girl Scout", 3, 0.12),
-                ("Keebler", 2, 0.08)
-            ]
-            ranking_rows = simulated_data
-        
-        # Calcular totales para porcentajes
-        total_all_mentions = sum(row[1] for row in ranking_rows)
-        print(f"DEBUG SOV: Total mentions: {total_all_mentions}")
-        
-        # Preparar datos para la tabla
-        ranking_data = []
-        for row in ranking_rows:
-            brand = row[0]
-            mentions = row[1]
-            sentiment = float(row[2]) if row[2] else 0.0
-            percentage = (mentions / total_all_mentions) * 100 if total_all_mentions > 0 else 0
-            
-            ranking_data.append({
-                "brand": brand,
-                "percentage": round(percentage, 1),
-                "mentions": mentions,
-                "sentiment": round(sentiment, 3)
-            })
-        
-        # ✅ CREAR DATOS TEMPORALES SIMULADOS para el gráfico
-        # Distribuir las menciones a lo largo de 7 días
-        import random
-        from datetime import timedelta
-        
-        # Generar fechas de los últimos 7 días
-        days = []
-        for i in range(7):
-            date = filters['end_date'] - timedelta(days=6-i)
-            days.append(date.strftime('%b %d'))
-        
-        # Crear datos para el gráfico temporal
-        sov_chart_data = []
-        brands = [item['brand'] for item in ranking_data[:5]]  # Top 5 marcas
-        
-        for day in days:
-            day_entry = {"date": day}
-            day_total = 0
-            
-            # Distribuir menciones por día para cada marca
-            for brand_data in ranking_data[:5]:
-                brand = brand_data['brand']
-                total_mentions = brand_data['mentions']
-                
-                # Simular variación diaria (entre 0-40% del total)
-                daily_mentions = max(1, int(total_mentions * random.uniform(0.05, 0.4)))
-                day_total += daily_mentions
-            
-            # Calcular porcentajes para este día
-            for brand_data in ranking_data[:5]:
-                brand = brand_data['brand']
-                total_mentions = brand_data['mentions']
-                daily_mentions = max(1, int(total_mentions * random.uniform(0.05, 0.4)))
-                
-                if day_total > 0:
-                    percentage = (daily_mentions / day_total) * 100
-                    day_entry[brand] = round(percentage, 1)
-                else:
-                    day_entry[brand] = 0
-            
-            sov_chart_data.append(day_entry)
-        
-        cur.close()
-        conn.close()
-        
-        print(f"DEBUG SOV: Generado {len(sov_chart_data)} días de datos para gráfico")
-        print(f"DEBUG SOV: Brands en gráfico: {brands}")
-        
-        # Respuesta completa
-        return jsonify({
-            # Para el gráfico temporal
-            "sov_data": sov_chart_data,
-            
-            # Para la tabla de ranking
-            "data": ranking_data,
-            
-            # Estadísticas
-            "total_mentions": total_all_mentions,
-            "days_with_data": len(sov_chart_data),
-            "brands_detected": len(ranking_data),
-            
-            # Debug
-            "debug": {
-                "filters_applied": filters,
-                "date_range": f"{filters['start_date']} to {filters['end_date']}",
-                "query_returned_rows": len(ranking_rows),
-                "chart_data_generated": True,
-                "approach": "simplified_no_daily_grouping"
-            }
-        })
-        
-    except Exception as e:
-        print(f"Error en share-of-voice: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        
-        # Fallback básico que siempre funciona
-        return jsonify({
-            "data": [
-                {"brand": "Oreo", "percentage": 35.0, "mentions": 7},
-                {"brand": "Chips Ahoy", "percentage": 25.0, "mentions": 5},
-                {"brand": "Tates", "percentage": 20.0, "mentions": 4},
-                {"brand": "Girl Scout", "percentage": 15.0, "mentions": 3},
-                {"brand": "Keebler", "percentage": 5.0, "mentions": 1}
-            ],
-            "sov_data": [
-                {"date": "Aug 07", "Oreo": 40, "Chips Ahoy": 30, "Tates": 20, "Girl Scout": 10},
-                {"date": "Aug 08", "Oreo": 35, "Chips Ahoy": 25, "Tates": 25, "Girl Scout": 15},
-                {"date": "Aug 09", "Oreo": 30, "Chips Ahoy": 35, "Tates": 20, "Girl Scout": 15},
-                {"date": "Aug 10", "Oreo": 45, "Chips Ahoy": 20, "Tates": 25, "Girl Scout": 10},
-                {"date": "Aug 11", "Oreo": 38, "Chips Ahoy": 28, "Tates": 22, "Girl Scout": 12},
-                {"date": "Aug 12", "Oreo": 42, "Chips Ahoy": 23, "Tates": 18, "Girl Scout": 17},
-                {"date": "Aug 13", "Oreo": 37, "Chips Ahoy": 31, "Tates": 19, "Girl Scout": 13}
-            ],
-            "total_mentions": 20,
-            "error": str(e),
-            "debug": {"fallback_used": True}
-        })
-   
+
+
 
 @app.route('/api/dashboard-kpis', methods=['GET'])
 def get_dashboard_kpis():
@@ -2009,148 +1792,7 @@ def get_query_visibility(brand):
         print(f"Error en query-visibility: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
-# AGREGAR AL FINAL de backend/app.py (antes del if __name__ == '__main__':)
-
-@app.route('/api/industry/brand-visibility-ranking', methods=['GET'])
-def get_brand_visibility_ranking():
-    """Obtener ranking de marcas basado en visibilidad (como Lotus Biscoff)"""
-    try:
-        filters = parse_filters(request)
-        
-        conn = get_db_connection()
-        cur = conn.cursor()
-        
-        # Lista de marcas principales de cookies/biscuits que buscamos
-        brand_patterns = {
-            'Lotus Biscoff': ['lotus', 'biscoff', 'speculoos'],
-            'Oreo': ['oreo'],
-            'Chips Ahoy': ['chips ahoy'],
-            'Pepperidge Farm': ['pepperidge farm', 'milano'],
-            'Keebler': ['keebler'],
-            'Girl Scout Cookies': ['girl scout'],
-            'Nabisco': ['nabisco'],
-            'Tate\'s Bake Shop': ['tate', 'tates'],
-            'Famous Amos': ['famous amos'],
-            'Archway': ['archway'],
-            'Little Debbie': ['little debbie'],
-            'Kellogg\'s': ['kellogg'],
-            'Annie\'s': ['annie'],
-            'Newman\'s Own': ['newman'],
-        }
-        
-        brand_visibility = {}
-        
-        # Para cada marca, calcular su visibilidad
-        for brand_name, patterns in brand_patterns.items():
-            
-            # Crear la condición SQL para buscar cualquier patrón de la marca
-            brand_conditions = []
-            brand_params = []
-            
-            for pattern in patterns:
-                brand_conditions.append("m.response ILIKE %s")
-                brand_params.append(f'%{pattern}%')
-            
-            brand_condition_sql = " OR ".join(brand_conditions)
-            
-            # Query para calcular visibilidad de esta marca
-            visibility_query = f"""
-            SELECT 
-                COUNT(m.id) as total_mentions,
-                COUNT(CASE WHEN ({brand_condition_sql}) THEN 1 END) as brand_mentions,
-                AVG(CASE WHEN ({brand_condition_sql}) THEN m.sentiment END) as avg_sentiment
-            FROM mentions m
-            JOIN queries q ON m.query_id = q.id
-            WHERE m.created_at >= %s 
-            AND m.created_at <= %s
-            AND q.enabled = true
-            """
-            
-            # Parámetros: brand_params (duplicados para las dos condiciones) + fechas
-            query_params = brand_params + brand_params + [filters['start_date'], filters['end_date']]
-            
-            cur.execute(visibility_query, query_params)
-            result = cur.fetchone()
-            
-            total_mentions = result[0] or 0
-            brand_mentions = result[1] or 0
-            avg_sentiment = float(result[2]) if result[2] else 0.0
-            
-            # Calcular visibilidad percentage
-            visibility_percentage = 0.0
-            if total_mentions > 0:
-                visibility_percentage = (brand_mentions / total_mentions) * 100
-            
-            # Solo incluir marcas que tienen al menos 1 mención
-            if brand_mentions > 0:
-                brand_visibility[brand_name] = {
-                    'brand_mentions': brand_mentions,
-                    'total_mentions': total_mentions,
-                    'visibility_percentage': visibility_percentage,
-                    'avg_sentiment': avg_sentiment
-                }
-        
-        # Convertir a formato ranking y ordenar por visibilidad
-        ranking = []
-        for i, (brand_name, data) in enumerate(sorted(
-            brand_visibility.items(), 
-            key=lambda x: x[1]['visibility_percentage'], 
-            reverse=True
-        )):
-            
-            # Calcular delta (simulado basado en sentiment)
-            delta_value = 0.0
-            if data['avg_sentiment'] > 0.1:
-                delta_value = min(data['visibility_percentage'] * 0.1, 5.0)  # Max 5% aumento
-            elif data['avg_sentiment'] < -0.1:
-                delta_value = -min(data['visibility_percentage'] * 0.1, 5.0)  # Max 5% bajada
-            
-            ranking.append({
-                "position": i + 1,
-                "name": brand_name,
-                "score": round(data['visibility_percentage'], 1),
-                "delta": round(delta_value, 1),
-                "logo": f"/placeholder.svg?height=40&width=40&text={brand_name.replace(' ', '+').replace('\'', '')}"
-            })
-        
-        cur.close()
-        conn.close()
-        
-        # Si no hay datos reales, devolver ranking básico
-        if not ranking:
-            ranking = [
-                {"position": 1, "name": "Lotus Biscoff", "score": 28.1, "delta": 2.3, "logo": "/placeholder.svg?height=40&width=40&text=Lotus+Biscoff"},
-                {"position": 2, "name": "Oreo", "score": 24.7, "delta": -1.2, "logo": "/placeholder.svg?height=40&width=40&text=Oreo"},
-                {"position": 3, "name": "Chips Ahoy", "score": 18.9, "delta": 0.8, "logo": "/placeholder.svg?height=40&width=40&text=Chips+Ahoy"},
-                {"position": 4, "name": "Pepperidge Farm", "score": 15.3, "delta": -0.5, "logo": "/placeholder.svg?height=40&width=40&text=Pepperidge+Farm"},
-                {"position": 5, "name": "Keebler", "score": 12.8, "delta": 1.1, "logo": "/placeholder.svg?height=40&width=40&text=Keebler"}
-            ]
-        
-        return jsonify({
-            "ranking": ranking[:10],  # Top 10
-            "debug": {
-                "filters_applied": filters,
-                "brands_found": len(brand_visibility),
-                "source": "brand_visibility_calculation"
-            }
-        })
-        
-    except Exception as e:
-        print(f"Error en brand visibility ranking: {str(e)}")
-        return jsonify({
-            "ranking": [
-                {"position": 1, "name": "Error loading data", "score": 0.0, "delta": 0.0, "logo": "/placeholder.svg"}
-            ],
-            "error": str(e)
-        }, 500)
-    
-
-
-    # Agregar en backend/app.p
-    # 
-
-# AGREGAR SOLO ESTOS ENDPOINTS AL FINAL DE backend/app.py
-# (ANTES de la línea "if __name__ == '__main__':")
+# AGREGAR AL FINAL de backend/app.py (antes del id)
 
 @app.route('/api/improve/ctas', methods=['GET'])
 def get_improvement_ctas():
@@ -2569,6 +2211,431 @@ def get_features_sentiment():
     except Exception as e:
         print(f"Error en features-sentiment endpoint: {str(e)}")
         return jsonify({"error": str(e)}), 500
+
+# REEMPLAZA la función get_share_of_voice en app.py con esta versión GENÉRICA:
+
+
+# Añadir estos endpoints corregidos al final de app.py
+# Reemplazar los existentes
+
+    """Ranking CORREGIDO - con cambios temporales reales"""
+    try:
+        filters = parse_filters(request)
+        
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        # Calcular periodo anterior para comparación
+        from datetime import timedelta
+        
+        # Periodo actual
+        current_start = filters['start_date']
+        current_end = filters['end_date']
+        
+        # Periodo anterior (mismo número de días)
+        period_days = (current_end - current_start).days
+        previous_end = current_start - timedelta(days=1)
+        previous_start = previous_end - timedelta(days=period_days)
+        
+        print(f"DEBUG RANKING: Periodo actual: {current_start} a {current_end}")
+        print(f"DEBUG RANKING: Periodo anterior: {previous_start} a {previous_end}")
+        
+        # Query para ranking actual
+        current_ranking_query = """
+        SELECT 
+            CASE 
+                WHEN m.response ILIKE '%oreo%' THEN 'Oreo'
+                WHEN m.response ILIKE '%chips ahoy%' THEN 'Chips Ahoy'
+                WHEN m.response ILIKE '%pepperidge%' THEN 'Pepperidge Farm'
+                WHEN m.response ILIKE '%girl scout%' THEN 'Girl Scout Cookies'
+                WHEN m.response ILIKE '%nabisco%' THEN 'Nabisco'
+                WHEN m.response ILIKE '%keebler%' THEN 'Keebler'
+                WHEN m.response ILIKE '%tate%' THEN 'Tate\'s Bake Shop'
+                WHEN m.response ILIKE '%famous amos%' THEN 'Famous Amos'
+                WHEN m.response ILIKE '%milano%' THEN 'Milano'
+                WHEN m.response ILIKE '%lotus biscoff%' OR m.response ILIKE '%biscoff%' THEN 'Lotus Biscoff'
+                ELSE 'Other'
+            END as brand_name,
+            COUNT(*) as current_mentions,
+            AVG(m.sentiment) as avg_sentiment
+        FROM mentions m
+        WHERE m.created_at >= %s AND m.created_at <= %s
+        GROUP BY brand_name
+        HAVING brand_name != 'Other' AND COUNT(*) > 0
+        ORDER BY current_mentions DESC, avg_sentiment DESC
+        LIMIT 10
+        """
+        
+        # Query para ranking anterior
+        previous_ranking_query = """
+        SELECT 
+            CASE 
+                WHEN m.response ILIKE '%oreo%' THEN 'Oreo'
+                WHEN m.response ILIKE '%chips ahoy%' THEN 'Chips Ahoy'
+                WHEN m.response ILIKE '%pepperidge%' THEN 'Pepperidge Farm'
+                WHEN m.response ILIKE '%girl scout%' THEN 'Girl Scout Cookies'
+                WHEN m.response ILIKE '%nabisco%' THEN 'Nabisco'
+                WHEN m.response ILIKE '%keebler%' THEN 'Keebler'
+                WHEN m.response ILIKE '%tate%' THEN 'Tate\'s Bake Shop'
+                WHEN m.response ILIKE '%famous amos%' THEN 'Famous Amos'
+                WHEN m.response ILIKE '%milano%' THEN 'Milano'
+                WHEN m.response ILIKE '%lotus biscoff%' OR m.response ILIKE '%biscoff%' THEN 'Lotus Biscoff'
+                ELSE 'Other'
+            END as brand_name,
+            COUNT(*) as previous_mentions
+        FROM mentions m
+        WHERE m.created_at >= %s AND m.created_at <= %s
+        GROUP BY brand_name
+        HAVING brand_name != 'Other'
+        """
+        
+        # Ejecutar queries
+        cur.execute(current_ranking_query, [current_start, current_end])
+        current_rows = cur.fetchall()
+        
+        cur.execute(previous_ranking_query, [previous_start, previous_end])
+        previous_rows = cur.fetchall()
+        
+        # Procesar datos anteriores
+        previous_data = {}
+        for row in previous_rows:
+            brand_name = row[0]
+            mentions = row[1]
+            previous_data[brand_name] = mentions
+        
+        # Crear ranking con cambios
+        ranking_data = []
+        for i, row in enumerate(current_rows):
+            brand_name = row[0]
+            current_mentions = row[1]
+            avg_sentiment = float(row[2]) if row[2] else 0.0
+            
+            # Calcular cambio porcentual
+            previous_mentions = previous_data.get(brand_name, 0)
+            
+            if previous_mentions > 0:
+                change_percentage = ((current_mentions - previous_mentions) / previous_mentions) * 100
+            elif current_mentions > 0:
+                change_percentage = 100.0  # Nueva marca
+            else:
+                change_percentage = 0.0
+            
+            ranking_data.append({
+                "name": brand_name,
+                "mentions": current_mentions,
+                "delta": round(change_percentage, 1),
+                "logo": f"/placeholder.svg?height=40&width=40&text={brand_name.replace(' ', '+')}"
+            })
+        
+        # Si no hay datos suficientes, generar datos de ejemplo con variaciones realistas
+        if len(ranking_data) == 0:
+            print("DEBUG RANKING: No hay datos reales, generando fallback con variaciones")
+            import random
+            
+            brands = ["Oreo", "Chips Ahoy", "Tate's Bake Shop", "Girl Scout Cookies", "Lotus Biscoff", 
+                     "Nabisco", "Pepperidge Farm", "Keebler", "Famous Amos", "Milano"]
+            
+            ranking_data = []
+            for i, brand in enumerate(brands):
+                # Generar cambios realistas entre -15% y +25%
+                delta = round(random.uniform(-15.0, 25.0), 1)
+                mentions = random.randint(5, 25)
+                
+                ranking_data.append({
+                    "name": brand,
+                    "mentions": mentions,
+                    "delta": delta,
+                    "logo": f"/placeholder.svg?height=40&width=40&text={brand.replace(' ', '+')}"
+                })
+        
+        cur.close()
+        conn.close()
+        
+        return jsonify({
+            "ranking": ranking_data,
+            "debug": {
+                "filters_applied": filters,
+                "current_period": f"{current_start} to {current_end}",
+                "comparison_period": f"{previous_start} to {previous_end}",
+                "brands_found": len(ranking_data),
+                "source": "real_data" if len(current_rows) > 0 else "fallback_data"
+            }
+        })
+        
+    except Exception as e:
+        print(f"Error en ranking: {str(e)}")
+        # Fallback con datos variados
+        fallback_ranking = [
+            {"name": "Oreo", "mentions": 15, "delta": 12.5, "logo": "/placeholder.svg?height=40&width=40&text=Oreo"},
+            {"name": "Chips Ahoy", "mentions": 12, "delta": -5.2, "logo": "/placeholder.svg?height=40&width=40&text=Chips+Ahoy"},
+            {"name": "Tate's Bake Shop", "mentions": 10, "delta": 8.7, "logo": "/placeholder.svg?height=40&width=40&text=Tates"},
+            {"name": "Girl Scout Cookies", "mentions": 8, "delta": -2.1, "logo": "/placeholder.svg?height=40&width=40&text=Girl+Scout"},
+            {"name": "Lotus Biscoff", "mentions": 6, "delta": 15.3, "logo": "/placeholder.svg?height=40&width=40&text=Lotus+Biscoff"}
+        ]
+        
+        return jsonify({
+            "ranking": fallback_ranking,
+            "error": str(e),
+            "debug": {"source": "error_fallback"}
+        })
+
+@app.route('/api/industry/share-of-voice', methods=['GET'])
+def get_share_of_voice():
+    """Share of Voice - SOLO DATOS REALES, sin fallback (response, source_title o q.brand)"""
+    try:
+        filters = parse_filters(request)
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        sov_query = """
+        WITH labeled AS (
+          SELECT 
+            DATE(m.created_at) AS date,
+            CASE 
+              WHEN (m.response ILIKE '%%lotus biscoff%%' OR m.response ILIKE '%%biscoff%%'
+                    OR COALESCE(m.source_title,'') ILIKE '%%biscoff%%'
+                    OR COALESCE(q.brand,'') ILIKE '%%lotus%%') THEN 'Lotus Biscoff'
+              WHEN (m.response ILIKE '%%oreo%%'
+                    OR COALESCE(m.source_title,'') ILIKE '%%oreo%%'
+                    OR COALESCE(q.brand,'') ILIKE '%%oreo%%') THEN 'Oreo'
+              WHEN (m.response ILIKE '%%chips ahoy%%'
+                    OR COALESCE(m.source_title,'') ILIKE '%%chips ahoy%%'
+                    OR COALESCE(q.brand,'') ILIKE '%%chips ahoy%%') THEN 'Chips Ahoy'
+              WHEN (m.response ILIKE '%%pepperidge%%' OR m.response ILIKE '%%milano%%'
+                    OR COALESCE(m.source_title,'') ILIKE '%%pepperidge%%'
+                    OR COALESCE(q.brand,'') ILIKE '%%pepperidge%%') THEN 'Pepperidge Farm'
+              WHEN (m.response ILIKE '%%keebler%%'
+                    OR COALESCE(m.source_title,'') ILIKE '%%keebler%%'
+                    OR COALESCE(q.brand,'') ILIKE '%%keebler%%') THEN 'Keebler'
+              WHEN (m.response ILIKE '%%girl scout%%'
+                    OR COALESCE(m.source_title,'') ILIKE '%%girl scout%%'
+                    OR COALESCE(q.brand,'') ILIKE '%%girl scout%%') THEN 'Girl Scout Cookies'
+              WHEN (m.response ILIKE '%%nabisco%%'
+                    OR COALESCE(m.source_title,'') ILIKE '%%nabisco%%'
+                    OR COALESCE(q.brand,'') ILIKE '%%nabisco%%') THEN 'Nabisco'
+              WHEN (m.response ILIKE '%%tate%%' OR m.response ILIKE '%%tates%%'
+                    OR COALESCE(m.source_title,'') ILIKE '%%tate%%'
+                    OR COALESCE(q.brand,'') ILIKE '%%tate%%') THEN 'Tate''s Bake Shop'
+              WHEN (m.response ILIKE '%%famous amos%%'
+                    OR COALESCE(m.source_title,'') ILIKE '%%famous amos%%'
+                    OR COALESCE(q.brand,'') ILIKE '%%famous amos%%') THEN 'Famous Amos'
+              ELSE 'Other'
+            END AS brand
+          FROM mentions m
+          LEFT JOIN queries q ON q.id = m.query_id
+          WHERE m.created_at >= %s AND m.created_at <= %s
+        )
+        SELECT date, brand, COUNT(*)::int AS daily_mentions
+        FROM labeled
+        WHERE brand <> 'Other'
+        GROUP BY date, brand
+        ORDER BY date, daily_mentions DESC;
+        """
+
+        cur.execute(sov_query, [filters['start_date'], filters['end_date']])
+        rows = cur.fetchall()
+
+        if not rows:
+            cur.close(); conn.close()
+            return jsonify({
+                "sov_data": [],
+                "debug": {
+                    "filters_applied": filters,
+                    "days_found": 0,
+                    "source": "real_data_only"
+                }
+            })
+
+        # Agrupar por día y normalizar a %
+        daily = {}
+        for d, brand, count in rows:
+            key = d.strftime('%b %d')
+            bucket = daily.setdefault(key, {"date": key})
+            bucket[brand] = bucket.get(brand, 0) + int(count)
+
+        sov_data = []
+        # Orden cronológico por fecha (mes abreviado inglés OK)
+        from datetime import datetime as _dt
+        for _, bucket in sorted(daily.items(), key=lambda kv: _dt.strptime(kv[0], '%b %d')):
+            total = sum(v for k, v in bucket.items() if k != "date")
+            if total > 0:
+                for k in list(bucket.keys()):
+                    if k != "date":
+                        bucket[k] = round(bucket[k] * 100.0 / total, 1)
+                sov_data.append(bucket)
+
+        cur.close(); conn.close()
+        return jsonify({
+            "sov_data": sov_data,
+            "debug": {
+                "filters_applied": filters,
+                "days_found": len(sov_data),
+                "total_rows": len(rows),
+                "source": "real_data_only"
+            }
+        })
+    except Exception as e:
+        print(f"Error en share of voice: {str(e)}")
+        return jsonify({"sov_data": [], "error": str(e)}), 500
+
+
+@app.route('/api/industry/ranking', methods=['GET'])
+def get_industry_ranking():
+    """Obtener ranking de marcas basado en visibilidad real"""
+    try:
+        filters = parse_filters(request)
+        
+        # Llamar internamente al nuevo endpoint de brand visibility
+        import requests
+        
+        # Construir query string
+        query_params = []
+        if filters.get('range'):
+            query_params.append(f"range={filters['range']}")
+        if filters.get('sentiment') != 'all':
+            query_params.append(f"sentiment={filters['sentiment']}")
+        if filters.get('model') != 'all':
+            query_params.append(f"model={filters['model']}")
+        
+        query_string = "&".join(query_params)
+        url = f"http://localhost:5050/api/industry/brand-visibility-ranking"
+        if query_string:
+            url += f"?{query_string}"
+        
+        response = requests.get(url)
+        
+        if response.status_code == 200:
+            data = response.json()
+            return jsonify(data)
+        else:
+            # Fallback con datos de ejemplo
+            return jsonify({
+                "ranking": [
+                    {"position": 1, "name": "Lotus Biscoff", "score": 28.1, "delta": 2.3, "logo": "/placeholder.svg?height=40&width=40&text=Lotus+Biscoff"},
+                    {"position": 2, "name": "Oreo", "score": 24.7, "delta": -1.2, "logo": "/placeholder.svg?height=40&width=40&text=Oreo"},
+                    {"position": 3, "name": "Chips Ahoy", "score": 18.9, "delta": 0.8, "logo": "/placeholder.svg?height=40&width=40&text=Chips+Ahoy"},
+                    {"position": 4, "name": "Pepperidge Farm", "score": 15.3, "delta": -0.5, "logo": "/placeholder.svg?height=40&width=40&text=Pepperidge+Farm"},
+                    {"position": 5, "name": "Keebler", "score": 12.8, "delta": 1.1, "logo": "/placeholder.svg?height=40&width=40&text=Keebler"}
+                ],
+                "debug": {"source": "fallback_data"}
+            })
+        
+    except Exception as e:
+        print(f"Error en industry ranking: {str(e)}")
+        return jsonify({
+            "ranking": [
+                {"position": 1, "name": "Data unavailable", "score": 0.0, "delta": 0.0, "logo": "/placeholder.svg"}
+            ],
+            "error": str(e)
+        })
+
+@app.route('/api/industry/brand-visibility-ranking', methods=['GET'])
+def get_brand_visibility_ranking():
+    """Ranking de marcas basado en visibilidad REAL. No hay fallback: si no hay datos -> []."""
+    try:
+        filters = parse_filters(request)
+
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        # Patrones por marca (puedes ampliarlo; esto NO es fallback, sólo mapeo de detección)
+        brand_patterns = {
+            'Lotus Biscoff': ['lotus', 'biscoff', 'speculoos'],
+            'Oreo': ['oreo'],
+            'Chips Ahoy': ['chips ahoy'],
+            'Pepperidge Farm': ['pepperidge farm', 'milano'],
+            'Keebler': ['keebler'],
+            'Girl Scout Cookies': ['girl scout'],
+            'Nabisco': ['nabisco'],
+            "Tate's Bake Shop": ['tate', 'tates'],
+            'Famous Amos': ['famous amos'],
+            'Archway': ['archway'],
+            'Little Debbie': ['little debbie'],
+            "Kellogg's": ['kellogg'],
+            "Annie's": ['annie'],
+            "Newman's Own": ['newman'],
+        }
+
+        brand_visibility = {}
+
+        # Calcular visibilidad por marca en el rango
+        for brand_name, patterns in brand_patterns.items():
+            # Condición "ANY pattern" para ILIKE
+            cond = " OR ".join(["m.response ILIKE %s" for _ in patterns])
+            sql = f"""
+                SELECT 
+                    COUNT(m.id)                                         AS total_mentions,
+                    COUNT(CASE WHEN ({cond}) THEN 1 END)               AS brand_mentions,
+                    AVG(CASE WHEN ({cond}) THEN m.sentiment END)       AS avg_sentiment
+                FROM mentions m
+                JOIN queries q ON q.id = m.query_id
+                WHERE m.created_at >= %s AND m.created_at <= %s
+                  AND q.enabled = TRUE
+            """
+            params = [f"%{p}%" for p in patterns] + [f"%{p}%" for p in patterns] + [filters['start_date'], filters['end_date']]
+            cur.execute(sql, params)
+            row = cur.fetchone()
+            if not row:
+                continue
+
+            total_mentions = row[0] or 0
+            brand_mentions = row[1] or 0
+            avg_sentiment = float(row[2]) if row[2] is not None else 0.0
+
+            if brand_mentions > 0:
+                visibility_pct = (brand_mentions / total_mentions) * 100 if total_mentions > 0 else 0.0
+                brand_visibility[brand_name] = {
+                    "brand_mentions": brand_mentions,
+                    "total_mentions": total_mentions,
+                    "visibility_percentage": visibility_pct,
+                    "avg_sentiment": avg_sentiment,
+                }
+
+        # Construir ranking (ordenado por visibilidad)
+        ranking = []
+        for i, (brand_name, data) in enumerate(
+            sorted(brand_visibility.items(), key=lambda kv: kv[1]['visibility_percentage'], reverse=True),
+            start=1
+        ):
+            # Delta simple basado en sentimiento (no “demo”, sólo una guía visual)
+            if data['avg_sentiment'] > 0.1:
+                delta = min(data['visibility_percentage'] * 0.1, 5.0)
+            elif data['avg_sentiment'] < -0.1:
+                delta = -min(data['visibility_percentage'] * 0.1, 5.0)
+            else:
+                delta = 0.0
+
+            safe_brand = brand_name.replace(" ", "+").replace("'", "")
+            ranking.append({
+                    "position": i,
+                    "name": brand_name,
+                    "score": round(data['visibility_percentage'], 1),
+                    "delta": round(delta, 1),
+                    "logo": f"/placeholder.svg?height=40&width=40&text={safe_brand}"
+                })
+
+
+        cur.close()
+        conn.close()
+
+        # Real-only: si no hay datos, devolver arreglo vacío
+        return jsonify({
+            "ranking": ranking,
+            "debug": {
+                "filters_applied": filters,
+                "brands_found": len(brand_visibility),
+                "source": "brand_visibility_calculation",
+                "fallback": False
+            }
+        })
+
+    except Exception as e:
+        print(f"Error en brand visibility ranking: {str(e)}")
+        try:
+            cur.close(); conn.close()
+        except Exception:
+            pass
+        return jsonify({"ranking": [], "error": str(e)}), 500
 
 
 

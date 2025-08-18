@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useSearchParams } from 'next/navigation'
+import { useGlobalFilters, buildGlobalQueryParams } from '@/stores/use-global-filters'
 import { Search, Star, Filter, Grid, BarChart3, FileText, CheckCircle2 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -41,43 +42,37 @@ interface CTA {
 
 export default function InsightsPage() {
   const searchParams = useSearchParams()
+  
+  // 🎯 USAR FILTROS GLOBALES (como en dashboard y alerts)
+  const globalFilters = useGlobalFilters()
+  const queryParams = buildGlobalQueryParams(globalFilters)
+  
+  // Estados para datos
   const [insights, setInsights] = useState<Insight[]>([])
   const [quotes, setQuotes] = useState<Quote[]>([])
   const [ctas, setCtas] = useState<CTA[]>([])
   const [loading, setLoading] = useState(true)
+  
+  // Estados para UI
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedCategory, setSelectedCategory] = useState('all')
   const [activeTab, setActiveTab] = useState('all')
   const [ctaFilter, setCtaFilter] = useState('open')
 
-  // Leer filtros de la URL (del header global)
-  const getFiltersFromURL = () => {
-    const range = searchParams.get('range') || '7d'
-    const sentiment = searchParams.get('sentiment') || 'all'
-    const model = searchParams.get('model') || 'all'
-    
-    return { range, sentiment, model }
-  }
-
-  // Función para obtener insights desde el backend real
+  // 📡 Función para obtener insights desde el backend real
   const fetchInsights = async () => {
     try {
       setLoading(true)
       
-      // Obtener filtros de la URL
-      const filters = getFiltersFromURL()
+      // 🎯 USAR queryParams del store global
+      const params = new URLSearchParams(queryParams)
+      params.set('type', activeTab)
+      params.set('status', activeTab === 'cta' ? ctaFilter : 'all')
+      params.set('limit', '50')
       
-      // Construir query params
-      const params = new URLSearchParams({
-        type: activeTab,
-        status: activeTab === 'cta' ? ctaFilter : 'all',
-        limit: '50',
-        range: filters.range,
-        sentiment: filters.sentiment,
-        model: filters.model
-      })
+      console.log(`📡 Fetching insights with global filters:`, globalFilters)
+      console.log(`📡 Full URL: /api/insights?${params}`)
       
-      console.log(`Fetching insights from: /api/insights?${params}`)
       const response = await fetch(`/api/insights?${params}`)
       
       if (!response.ok) {
@@ -85,7 +80,7 @@ export default function InsightsPage() {
       }
       
       const data = await response.json()
-      console.log('Insights data received:', data)
+      console.log('📊 Insights data received:', data)
       
       if (activeTab === 'cta') {
         setCtas(data)
@@ -95,7 +90,7 @@ export default function InsightsPage() {
         setInsights(data)
       }
     } catch (error) {
-      console.error('Error fetching insights:', error)
+      console.error('❌ Error fetching insights:', error)
       // En caso de error, limpiar datos para no mostrar mock
       if (activeTab === 'cta') {
         setCtas([])
@@ -109,10 +104,10 @@ export default function InsightsPage() {
     }
   }
 
-  // Cargar datos cuando cambie el tab activo, filtros o parámetros de URL
+  // 🚀 Efecto que depende de los filtros globales
   useEffect(() => {
     fetchInsights()
-  }, [activeTab, ctaFilter, searchParams])
+  }, [activeTab, ctaFilter, globalFilters.timeRange, globalFilters.model, globalFilters.region, globalFilters.advanced.sentiment])
 
   // Función para marcar/desmarcar CTA como completada
   const toggleCTA = async (id: number) => {
@@ -171,221 +166,225 @@ export default function InsightsPage() {
             Explore AI-detected trends, opportunities, and risks.
           </p>
         </div>
-        <div className="flex items-center space-x-2">
+        <div className="flex items-center gap-4">
           <Button variant="outline" size="sm">
-            <Grid className="mr-2 h-4 w-4" />
+            <Grid className="w-4 h-4 mr-2" />
             Grid
           </Button>
-          <Button variant="ghost" size="sm">
-            <BarChart3 className="mr-2 h-4 w-4" />
+          <Button variant="outline" size="sm">
+            <BarChart3 className="w-4 h-4 mr-2" />
             Board
           </Button>
         </div>
       </div>
 
+      {/* 🎯 DEBUG: Mostrar filtros globales para verificar sincronización */}
+      <div className="bg-blue-50 p-3 rounded text-xs text-blue-800">
+        <strong>Debug - Global filters:</strong> Range: {globalFilters.timeRange} | Sentiment: {globalFilters.advanced.sentiment} | Model: {globalFilters.model} | Region: {globalFilters.region}
+        <br />
+        <strong>Query params:</strong> {queryParams}
+      </div>
+
       {/* Tabs */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList>
-          <TabsTrigger value="all" className="flex items-center space-x-2">
-            <FileText className="h-4 w-4" />
-            <span>All</span>
-            <Badge variant="secondary" className="ml-1">
-              {insights.length}
-            </Badge>
-          </TabsTrigger>
-          <TabsTrigger value="quote" className="flex items-center space-x-2">
-            <span>💬</span>
-            <span>Quotes</span>
-            <Badge variant="secondary" className="ml-1">
-              {quotes.length}
-            </Badge>
-          </TabsTrigger>
-          <TabsTrigger value="cta" className="flex items-center space-x-2">
-            <CheckCircle2 className="h-4 w-4" />
-            <span>CTAs</span>
-            <Badge variant="secondary" className="ml-1">
-              {ctas.filter(c => !c.done).length}
-            </Badge>
-          </TabsTrigger>
-        </TabsList>
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <div className="flex items-center justify-between mb-6">
+          <TabsList>
+            <TabsTrigger value="all">
+              <FileText className="w-4 h-4 mr-2" />
+              All
+              <Badge variant="secondary" className="ml-2">{insights.length}</Badge>
+            </TabsTrigger>
+            <TabsTrigger value="quote">
+              Quotes
+              <Badge variant="secondary" className="ml-2">{quotes.length}</Badge>
+            </TabsTrigger>
+            <TabsTrigger value="cta">
+              <CheckCircle2 className="w-4 h-4 mr-2" />
+              CTAs
+              <Badge variant="secondary" className="ml-2">{ctas.length}</Badge>
+            </TabsTrigger>
+          </TabsList>
 
-        {/* All Insights */}
-        <TabsContent value="all" className="space-y-6">
-          {/* Filters */}
-          <div className="flex items-center space-x-4">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-              <Input 
-                placeholder="Search insights..." 
-                className="pl-10"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-            </div>
-            <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-              <SelectTrigger className="w-40">
-                <Filter className="mr-2 h-4 w-4" />
-                <SelectValue placeholder="Category" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Categories</SelectItem>
-                <SelectItem value="Opportunity">Opportunities</SelectItem>
-                <SelectItem value="Risk">Risks</SelectItem>
-                <SelectItem value="Trend">Trends</SelectItem>
-              </SelectContent>
-            </Select>
+          {/* Filtros específicos por tab */}
+          <div className="flex items-center gap-4">
+            {activeTab === 'all' && (
+              <>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                  <Input
+                    placeholder="Search insights..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="pl-10 w-64"
+                  />
+                </div>
+                <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+                  <SelectTrigger className="w-[180px]">
+                    <Filter className="w-4 h-4 mr-2" />
+                    <SelectValue placeholder="All Categories" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Categories</SelectItem>
+                    <SelectItem value="Opportunity">Opportunities</SelectItem>
+                    <SelectItem value="Risk">Risks</SelectItem>
+                    <SelectItem value="Trend">Trends</SelectItem>
+                  </SelectContent>
+                </Select>
+              </>
+            )}
+            {activeTab === 'cta' && (
+              <Select value={ctaFilter} onValueChange={setCtaFilter}>
+                <SelectTrigger className="w-[140px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="open">Open CTAs</SelectItem>
+                  <SelectItem value="done">Completed</SelectItem>
+                  <SelectItem value="all">All CTAs</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
           </div>
+        </div>
 
-          {/* Insights Grid */}
-          {loading ? (
-            <div className="text-center py-8">
-              <div className="animate-spin h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full mx-auto mb-4"></div>
-              Loading insights...
-            </div>
-          ) : filteredInsights.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {/* Loading State */}
+        {loading && (
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {[1, 2, 3, 4, 5, 6].map(i => (
+              <Card key={i}>
+                <CardContent className="p-6">
+                  <div className="animate-pulse">
+                    <div className="h-4 bg-gray-200 rounded w-3/4 mb-2"></div>
+                    <div className="h-3 bg-gray-200 rounded w-1/2 mb-4"></div>
+                    <div className="h-2 bg-gray-200 rounded w-full mb-2"></div>
+                    <div className="h-2 bg-gray-200 rounded w-2/3"></div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+
+        {/* Tab Contents */}
+        <TabsContent value="all" className="space-y-4">
+          {filteredInsights.length === 0 && !loading ? (
+            <Card>
+              <CardContent className="flex flex-col items-center justify-center py-16">
+                <FileText className="w-12 h-12 text-gray-400 mb-4" />
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">No insights found</h3>
+                <p className="text-gray-500 text-center max-w-md">
+                  No insights match your current criteria. Try adjusting your filters or search terms.
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
               {filteredInsights.map((insight) => (
-                <Card key={insight.id} className="relative">
-                  <CardHeader className="pb-4">
+                <Card key={insight.id} className="group hover:shadow-lg transition-shadow">
+                  <CardHeader className="pb-3">
                     <div className="flex items-start justify-between">
-                      <Badge className={getCategoryColor(insight.category)} variant="outline">
+                      <Badge className={getCategoryColor(insight.category)}>
                         {insight.category}
                       </Badge>
-                      <Button variant="ghost" size="sm">
-                        <Star className="h-4 w-4" />
+                      <Button variant="ghost" size="sm" className="opacity-0 group-hover:opacity-100">
+                        <Star className="w-4 h-4" />
                       </Button>
                     </div>
                     <CardTitle className="text-lg leading-tight">{insight.title}</CardTitle>
-                    <CardDescription className={getSentimentColor(insight.sentiment)}>
-                      {insight.date}
-                    </CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <p className="text-sm text-muted-foreground mb-4 line-clamp-3">
-                      {insight.excerpt}
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      {insight.tags.slice(0, 3).map((tag, index) => (
-                        <Badge key={index} variant="secondary" className="text-xs">
-                          {tag}
-                        </Badge>
-                      ))}
+                    <p className="text-sm text-gray-600 mb-4 line-clamp-3">{insight.excerpt}</p>
+                    <div className="flex items-center justify-between text-xs text-gray-500">
+                      <span className={getSentimentColor(insight.sentiment)}>
+                        {insight.sentiment} sentiment
+                      </span>
+                      <span>{insight.date}</span>
                     </div>
-                    {insight.query && (
-                      <p className="text-xs text-muted-foreground mt-2 truncate">
-                        Query: {insight.query}
-                      </p>
+                    {insight.tags && insight.tags.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-3">
+                        {insight.tags.slice(0, 3).map((tag, i) => (
+                          <Badge key={i} variant="outline" className="text-xs">
+                            {tag}
+                          </Badge>
+                        ))}
+                      </div>
                     )}
                   </CardContent>
                 </Card>
               ))}
             </div>
-          ) : (
-            <div className="text-center py-8">
-              <p className="text-muted-foreground">No insights found matching your criteria.</p>
-            </div>
           )}
         </TabsContent>
 
-        {/* Quotes */}
-        <TabsContent value="quote" className="space-y-6">
-          {loading ? (
-            <div className="text-center py-8">
-              <div className="animate-spin h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full mx-auto mb-4"></div>
-              Loading quotes...
-            </div>
-          ) : quotes.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <TabsContent value="quote" className="space-y-4">
+          {quotes.length === 0 && !loading ? (
+            <Card>
+              <CardContent className="flex flex-col items-center justify-center py-16">
+                <FileText className="w-12 h-12 text-gray-400 mb-4" />
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">No quotes found</h3>
+                <p className="text-gray-500 text-center max-w-md">
+                  No quotes available for the current filters.
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid gap-4">
               {quotes.map((quote, index) => (
                 <Card key={index}>
-                  <CardContent className="pt-6">
-                    <div className="space-y-4">
-                      <blockquote className="text-sm italic border-l-4 border-blue-200 pl-4">
-                        "{quote.text}"
-                      </blockquote>
-                      <div className="flex items-center justify-between text-xs text-muted-foreground">
-                        <span>{quote.domain}</span>
-                        <div className="flex items-center space-x-2">
-                          <Badge variant="outline" className="text-xs">
-                            {quote.emotion}
-                          </Badge>
-                          {quote.sentiment !== undefined && (
-                            <span className={getSentimentColor(quote.sentiment > 0 ? 'positive' : quote.sentiment < 0 ? 'negative' : 'neutral')}>
-                              {quote.sentiment > 0 ? '+' : ''}{quote.sentiment.toFixed(2)}
-                            </span>
-                          )}
-                        </div>
-                      </div>
+                  <CardContent className="p-6">
+                    <blockquote className="text-lg italic text-gray-700 mb-4">
+                      "{quote.text}"
+                    </blockquote>
+                    <div className="flex items-center justify-between text-sm text-gray-500">
+                      <span>From: {quote.domain}</span>
+                      <Badge variant="outline">{quote.emotion}</Badge>
                     </div>
                   </CardContent>
                 </Card>
               ))}
-            </div>
-          ) : (
-            <div className="text-center py-8">
-              <p className="text-muted-foreground">No quotes available.</p>
             </div>
           )}
         </TabsContent>
 
-        {/* CTAs */}
-        <TabsContent value="cta" className="space-y-6">
-          {/* CTA Filter */}
-          <div className="flex items-center space-x-4">
-            <Select value={ctaFilter} onValueChange={setCtaFilter}>
-              <SelectTrigger className="w-40">
-                <SelectValue placeholder="Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All CTAs</SelectItem>
-                <SelectItem value="open">Open</SelectItem>
-                <SelectItem value="done">Completed</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          {loading ? (
-            <div className="text-center py-8">
-              <div className="animate-spin h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full mx-auto mb-4"></div>
-              Loading CTAs...
-            </div>
-          ) : ctas.length > 0 ? (
-            <div className="space-y-4">
+        <TabsContent value="cta" className="space-y-4">
+          {ctas.length === 0 && !loading ? (
+            <Card>
+              <CardContent className="flex flex-col items-center justify-center py-16">
+                <CheckCircle2 className="w-12 h-12 text-gray-400 mb-4" />
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">No CTAs found</h3>
+                <p className="text-gray-500 text-center max-w-md">
+                  No call-to-actions available for the current filters.
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="space-y-3">
               {ctas.map((cta) => (
-                <Card key={cta.id} className={`${cta.done ? 'opacity-60' : ''}`}>
-                  <CardContent className="pt-6">
-                    <div className="flex items-start space-x-4">
-                      <Button
-                        variant="ghost"
-                        size="sm"
+                <Card key={cta.id}>
+                  <CardContent className="p-4">
+                    <div className="flex items-start gap-3">
+                      <button
                         onClick={() => toggleCTA(cta.id)}
-                        className={`mt-1 ${cta.done ? 'text-green-600' : 'text-gray-400'}`}
+                        className={`mt-1 w-4 h-4 rounded border-2 flex items-center justify-center transition-colors ${
+                          cta.done 
+                            ? 'bg-green-500 border-green-500 text-white' 
+                            : 'border-gray-300 hover:border-green-400'
+                        }`}
                       >
-                        <CheckCircle2 className="h-4 w-4" />
-                      </Button>
+                        {cta.done && <CheckCircle2 className="w-3 h-3" />}
+                      </button>
                       <div className="flex-1">
-                        <p className={`text-sm ${cta.done ? 'line-through text-muted-foreground' : ''}`}>
+                        <p className={`text-sm ${cta.done ? 'line-through text-gray-500' : 'text-gray-900'}`}>
                           {cta.text}
                         </p>
-                        <div className="flex items-center space-x-2 mt-2">
-                          <Badge variant="outline" className="text-xs">
-                            {cta.source || 'ai_analysis'}
-                          </Badge>
-                          {cta.created_at && (
-                            <span className="text-xs text-muted-foreground">
-                              {new Date(cta.created_at).toLocaleDateString()}
-                            </span>
-                          )}
-                        </div>
+                        {cta.source && (
+                          <p className="text-xs text-gray-500 mt-1">Source: {cta.source}</p>
+                        )}
                       </div>
                     </div>
                   </CardContent>
                 </Card>
               ))}
-            </div>
-          ) : (
-            <div className="text-center py-8">
-              <p className="text-muted-foreground">No CTAs available.</p>
             </div>
           )}
         </TabsContent>
@@ -393,4 +392,3 @@ export default function InsightsPage() {
     </div>
   )
 }
-
