@@ -1,0 +1,105 @@
+{
+    "nav": {
+      "home": "Home",
+      "insights": "Insights",
+      "alerts": "Alerts",
+      "industry": "Industry",
+      "improve": "Improve",
+      "settings": "Settings"
+    },
+    "dashboard": {
+      "title": "AI Visibility Dashboard",
+      "subtitle": "Real-time brand visibility analytics",
+      "metrics": {
+        "mentions": "Mentions",
+        "sentiment": "Positive Sentiment",
+        "alerts": "Alerts Triggered",
+        "queries": "Active Queries"
+      },
+      "timeRange": {
+        "24h": "Last 24 hours",
+        "7d": "Last 7 days",
+        "30d": "Last 30 days",
+        "custom": "Custom range"
+      },
+      "filters": {
+        "allModels": "All models",
+        "region": "Region",
+        "sentiment": {
+          "all": "All sentiment",
+          "positive": "Positive",
+          "negative": "Negative",
+          "neutral": "Neutral"
+        }
+      },
+      "charts": {
+        "visibilityByQuery": "Visibility by Query",
+        "sentimentTrend": "Sentiment Trend",
+        "avgVisibility": "Avg Visibility",
+        "bestQuery": "Best Query"
+      },
+      "status": {
+        "realData": "Real Data",
+        "mockData": "Mock Data",
+        "loading": "Loading...",
+        "error": "Error loading data"
+      }
+    },
+    "insights": {
+      "title": "Smart Insights",
+      "subtitle": "AI-powered recommendations",
+      "cta": {
+        "completed": "Completed",
+        "pending": "Pending",
+        "markComplete": "Mark as complete",
+        "markPending": "Mark as pending"
+      },
+      "categories": {
+        "strategy": "Strategy",
+        "optimization": "Optimization",
+        "marketing": "Marketing",
+        "content": "Content",
+        "general": "General"
+      },
+      "priority": {
+        "high": "High",
+        "medium": "Medium",
+        "low": "Low"
+      }
+    },
+    "improve": {
+      "title": "Product Improvement",
+      "subtitle": "Feature sentiment analysis",
+      "filters": {
+        "allCategories": "All categories",
+        "predefinedOnly": "Predefined features only"
+      },
+      "metrics": {
+        "score": "Score",
+        "mentions": "mentions",
+        "positive": "Positive",
+        "neutral": "Neutral",
+        "negative": "Negative"
+      },
+      "actions": {
+        "recommended": "Recommended Actions",
+        "urgentAttention": "Urgent attention: This feature has very negative sentiment. Consider immediate improvements or strategy changes.",
+        "identifiedStrength": "Identified strength: Leverage this positive aspect in marketing, communication and product development.",
+        "deepAnalysis": "Deep analysis: Review the {count} related mentions for more specific insights and complete context.",
+        "strategicFeature": "Strategic feature: This is a key product characteristic."
+      }
+    },
+    "common": {
+      "loading": "Loading...",
+      "error": "Error",
+      "noData": "No data available",
+      "period": "Period",
+      "details": "Details",
+      "close": "Close",
+      "save": "Save",
+      "cancel": "Cancel",
+      "search": "Search",
+      "filter": "Filter",
+      "export": "Export"
+    }
+  }
