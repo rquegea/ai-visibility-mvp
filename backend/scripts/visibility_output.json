@@ -1,0 +1,61 @@
+{
+  "debug": {
+    "filters_applied": {
+      "end_date": "Tue, 02 Sep 2025 19:29:59 GMT",
+      "hide_bots": false,
+      "model": "all",
+      "range": "7d",
+      "region": "all",
+      "sentiment": "all",
+      "start_date": "Tue, 26 Aug 2025 19:29:59 GMT",
+      "verified_only": false
+    },
+    "query_count": 12,
+    "total_insights": 24
+  },
+  "delta": -19.5,
+  "ranking": [
+    {
+      "delta": -10.0,
+      "logo": "/placeholder.svg?height=40&width=40",
+      "name": "Query 1",
+      "position": 1,
+      "score": 40.0
+    },
+    {
+      "delta": -16.7,
+      "logo": "/placeholder.svg?height=40&width=40",
+      "name": "Query 9",
+      "position": 2,
+      "score": 33.3
+    },
+    {
+      "delta": -16.7,
+      "logo": "/placeholder.svg?height=40&width=40",
+      "name": "Query 10",
+      "position": 3,
+      "score": 33.3
+    },
+    {
+      "delta": -16.7,
+      "logo": "/placeholder.svg?height=40&width=40",
+      "name": "Query 11",
+      "position": 4,
+      "score": 33.3
+    },
+    {
+      "delta": -16.7,
+      "logo": "/placeholder.svg?height=40&width=40",
+      "name": "Query 12",
+      "position": 5,
+      "score": 33.3
+    }
+  ],
+  "series": [
+    {
+      "date": "Sep 02",
+      "score": 30.5
+    }
+  ],
+  "visibility_score": 30.5
+}

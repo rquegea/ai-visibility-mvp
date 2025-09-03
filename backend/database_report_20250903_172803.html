@@ -1,0 +1,1659 @@
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Visibility - Reporte Completo de Base de Datos</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+            line-height: 1.6;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .header {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 2.5em;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 10px;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .stat-card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        
+        .stat-number {
+            font-size: 3em;
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 5px;
+        }
+        
+        .stat-label {
+            font-size: 1.1em;
+            color: #666;
+        }
+        
+        .section {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        }
+        
+        .section h2 {
+            font-size: 1.8em;
+            margin-bottom: 20px;
+            color: #333;
+            border-bottom: 3px solid #667eea;
+            padding-bottom: 10px;
+        }
+        
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        
+        .table th,
+        .table td {
+            padding: 12px 15px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .table th {
+            background: #f8f9fa;
+            font-weight: bold;
+            color: #333;
+        }
+        
+        .table tr:hover {
+            background: #f8f9ff;
+        }
+        
+        .status-active {
+            color: #28a745;
+            font-weight: bold;
+        }
+        
+        .status-inactive {
+            color: #dc3545;
+            font-weight: bold;
+        }
+        
+        .mention-card {
+            background: #f8f9ff;
+            border-left: 4px solid #667eea;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 15px 0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .mention-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        
+        .mention-id {
+            font-weight: bold;
+            color: #667eea;
+        }
+        
+        .mention-date {
+            color: #666;
+            font-size: 0.9em;
+        }
+        
+        .mention-content {
+            margin: 10px 0;
+        }
+        
+        .mention-response {
+            background: white;
+            padding: 15px;
+            border-radius: 6px;
+            border: 1px solid #eee;
+            font-size: 0.95em;
+            line-height: 1.5;
+        }
+        
+        .insight-card {
+            background: linear-gradient(135deg, #e8f5e8, #f0f8f0);
+            border-left: 4px solid #28a745;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 15px 0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .insight-content {
+            margin: 15px 0;
+        }
+        
+        .insight-section {
+            margin: 10px 0;
+        }
+        
+        .insight-title {
+            font-weight: bold;
+            color: #28a745;
+            margin-bottom: 5px;
+        }
+        
+        .insight-list {
+            background: white;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 5px 0;
+        }
+        
+        .problem-alert {
+            background: linear-gradient(135deg, #ffebee, #ffcdd2);
+            border: 2px solid #f44336;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+            color: #c62828;
+        }
+        
+        .success-alert {
+            background: linear-gradient(135deg, #e8f5e8, #c8e6c9);
+            border: 2px solid #4caf50;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+            color: #2e7d32;
+        }
+        
+        .footer {
+            text-align: center;
+            color: white;
+            padding: 20px;
+            opacity: 0.8;
+        }
+        
+        .expandable {
+            cursor: pointer;
+            background: #f0f0f0;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 5px 0;
+        }
+        
+        .expandable:hover {
+            background: #e0e0e0;
+        }
+        
+        .collapsed {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>AI Visibility - Reporte Completo</h1>
+            <p>Generado: 2025-09-03 17:28:03</p>
+        </div>
+        
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-number">24</div>
+                <div class="stat-label">Total Queries</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">24</div>
+                <div class="stat-label">Queries Activas</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">48</div>
+                <div class="stat-label">Total Menciones</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">48</div>
+                <div class="stat-label">Total Insights</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">0.000</div>
+                <div class="stat-label">Sentiment Promedio</div>
+            </div>
+        </div>
+        
+        <div class='problem-alert'><strong>⚠️ PROBLEMA DETECTADO:</strong> Sentiment promedio = 0. Todas las menciones tienen sentiment nulo, lo que afecta el cálculo de visibility.</div>
+        
+        <div class="section">
+            <h2>Todas las Queries (24)</h2>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Query</th>
+                        <th>Marca</th>
+                        <th>Estado</th>
+                        <th>Creada</th>
+                    </tr>
+                </thead>
+                <tbody>
+    
+                    <tr>
+                        <td>1</td>
+                        <td>¿Cuál es la estimación del número de jóvenes en España (16-25 años) que se declaran indecisos sobre ...</td>
+                        <td>The Core School</td>
+                        <td><span class='status-active'>✅ Activa</span></td>
+                        <td>2025-09-03 13:40</td>
+                    </tr>
+        
+                    <tr>
+                        <td>2</td>
+                        <td>¿Qué &#x27;triggers&#x27; (eventos, experiencias, referentes culturales, estrenos de cine/series, influencers,...</td>
+                        <td>The Core School</td>
+                        <td><span class='status-active'>✅ Activa</span></td>
+                        <td>2025-09-03 13:40</td>
+                    </tr>
+        
+                    <tr>
+                        <td>3</td>
+                        <td>¿Cuáles son las motivaciones principales que impulsan a los jóvenes indecisos en España a considerar...</td>
+                        <td>The Core School</td>
+                        <td><span class='status-active'>✅ Activa</span></td>
+                        <td>2025-09-03 13:40</td>
+                    </tr>
+        
+                    <tr>
+                        <td>4</td>
+                        <td>¿Qué tipos de trabajos o estilos de vida rechazan explícitamente los jóvenes indecisos en España (ej...</td>
+                        <td>The Core School</td>
+                        <td><span class='status-active'>✅ Activa</span></td>
+                        <td>2025-09-03 13:40</td>
+                    </tr>
+        
+                    <tr>
+                        <td>5</td>
+                        <td>¿Cómo perciben los jóvenes en España la industria del entretenimiento y audiovisual (cine, series, v...</td>
+                        <td>The Core School</td>
+                        <td><span class='status-active'>✅ Activa</span></td>
+                        <td>2025-09-03 13:40</td>
+                    </tr>
+        
+                    <tr>
+                        <td>6</td>
+                        <td>¿Cuáles son las búsquedas y tendencias digitales más frecuentes en España relacionadas con &#x27;carreras...</td>
+                        <td>The Core School</td>
+                        <td><span class='status-active'>✅ Activa</span></td>
+                        <td>2025-09-03 13:40</td>
+                    </tr>
+        
+                    <tr>
+                        <td>7</td>
+                        <td>¿Cuáles son las preocupaciones más repetidas por los padres en España cuando sus hijos consideran ca...</td>
+                        <td>The Core School</td>
+                        <td><span class='status-active'>✅ Activa</span></td>
+                        <td>2025-09-03 13:40</td>
+                    </tr>
+        
+                    <tr>
+                        <td>8</td>
+                        <td>¿Qué tipo de argumentos, datos o testimonios resultan más persuasivos para convencer a los padres en...</td>
+                        <td>The Core School</td>
+                        <td><span class='status-active'>✅ Activa</span></td>
+                        <td>2025-09-03 13:40</td>
+                    </tr>
+        
+                    <tr>
+                        <td>9</td>
+                        <td>¿Qué otras alternativas de formación (FP, grados universitarios, academias de cine, escuelas de músi...</td>
+                        <td>The Core School</td>
+                        <td><span class='status-active'>✅ Activa</span></td>
+                        <td>2025-09-03 13:40</td>
+                    </tr>
+        
+                    <tr>
+                        <td>10</td>
+                        <td>¿Qué pain points destacan los jóvenes y padres sobre la oferta actual en formación audiovisual/entre...</td>
+                        <td>The Core School</td>
+                        <td><span class='status-active'>✅ Activa</span></td>
+                        <td>2025-09-03 13:40</td>
+                    </tr>
+        
+                    <tr>
+                        <td>11</td>
+                        <td>¿Qué canales y plataformas digitales (TikTok, YouTube, Twitch, Instagram, Spotify, foros de videojue...</td>
+                        <td>The Core School</td>
+                        <td><span class='status-active'>✅ Activa</span></td>
+                        <td>2025-09-03 13:40</td>
+                    </tr>
+        
+                    <tr>
+                        <td>12</td>
+                        <td>¿Cómo evoluciona el &#x27;share of voice&#x27; y el sentimiento online de The Core School frente a competidore...</td>
+                        <td>The Core School</td>
+                        <td><span class='status-active'>✅ Activa</span></td>
+                        <td>2025-09-03 13:40</td>
+                    </tr>
+        
+                    <tr>
+                        <td>13</td>
+                        <td>¿Qué menciones y percepciones generan otras instituciones españolas de formación en cine, comunicaci...</td>
+                        <td>The Core School</td>
+                        <td><span class='status-active'>✅ Activa</span></td>
+                        <td>2025-09-03 13:40</td>
+                    </tr>
+        
+                    <tr>
+                        <td>14</td>
+                        <td>¿Cómo evoluciona el &#x27;share of voice&#x27; digital en España entre The Core School y sus competidores dire...</td>
+                        <td>The Core School</td>
+                        <td><span class='status-active'>✅ Activa</span></td>
+                        <td>2025-09-03 13:40</td>
+                    </tr>
+        
+                    <tr>
+                        <td>15</td>
+                        <td>¿Qué temas generan mayor conversación online en España sobre la industria del entretenimiento (serie...</td>
+                        <td>The Core School</td>
+                        <td><span class='status-active'>✅ Activa</span></td>
+                        <td>2025-09-03 13:40</td>
+                    </tr>
+        
+                    <tr>
+                        <td>16</td>
+                        <td>¿Qué tendencias emergentes en entretenimiento (IA en guion, producción virtual, animación 3D, gaming...</td>
+                        <td>The Core School</td>
+                        <td><span class='status-active'>✅ Activa</span></td>
+                        <td>2025-09-03 13:40</td>
+                    </tr>
+        
+                    <tr>
+                        <td>17</td>
+                        <td>¿Cómo se percibe la empleabilidad de los titulados en carreras de entretenimiento y audiovisual en E...</td>
+                        <td>The Core School</td>
+                        <td><span class='status-active'>✅ Activa</span></td>
+                        <td>2025-09-03 13:40</td>
+                    </tr>
+        
+                    <tr>
+                        <td>18</td>
+                        <td>¿Qué perfiles del entretenimiento (realizador, productor, diseñador de videojuegos, guionista, anima...</td>
+                        <td>The Core School</td>
+                        <td><span class='status-active'>✅ Activa</span></td>
+                        <td>2025-09-03 13:40</td>
+                    </tr>
+        
+                    <tr>
+                        <td>19</td>
+                        <td>¿En qué contextos aparece The Core School vinculado a marcas del sector audiovisual y entretenimient...</td>
+                        <td>The Core School</td>
+                        <td><span class='status-active'>✅ Activa</span></td>
+                        <td>2025-09-03 13:40</td>
+                    </tr>
+        
+                    <tr>
+                        <td>20</td>
+                        <td>¿Qué impacto tienen las colaboraciones de The Core School con profesionales reconocidos o empresas d...</td>
+                        <td>The Core School</td>
+                        <td><span class='status-active'>✅ Activa</span></td>
+                        <td>2025-09-03 13:40</td>
+                    </tr>
+        
+                    <tr>
+                        <td>21</td>
+                        <td>¿Qué experiencias narran los estudiantes actuales o antiguos de The Core School en redes sociales so...</td>
+                        <td>The Core School</td>
+                        <td><span class='status-active'>✅ Activa</span></td>
+                        <td>2025-09-03 13:40</td>
+                    </tr>
+        
+                    <tr>
+                        <td>22</td>
+                        <td>¿Qué expectativas expresan los jóvenes en España sobre la experiencia universitaria en carreras crea...</td>
+                        <td>The Core School</td>
+                        <td><span class='status-active'>✅ Activa</span></td>
+                        <td>2025-09-03 13:40</td>
+                    </tr>
+        
+                    <tr>
+                        <td>23</td>
+                        <td>¿Cómo se percibe la integración de nuevas tecnologías (IA, VR/AR, producción virtual, música digital...</td>
+                        <td>The Core School</td>
+                        <td><span class='status-active'>✅ Activa</span></td>
+                        <td>2025-09-03 13:40</td>
+                    </tr>
+        
+                    <tr>
+                        <td>24</td>
+                        <td>¿Qué discursos circulan online en España sobre &#x27;el futuro del entretenimiento&#x27; y &#x27;los empleos creati...</td>
+                        <td>The Core School</td>
+                        <td><span class='status-active'>✅ Activa</span></td>
+                        <td>2025-09-03 13:40</td>
+                    </tr>
+        
+                </tbody>
+            </table>
+        </div>
+        
+        <div class="section">
+            <h2>Estadísticas por Query</h2>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Query</th>
+                        <th>Menciones</th>
+                        <th>Positivas</th>
+                        <th>Sentiment Avg</th>
+                        <th>Visibility</th>
+                    </tr>
+                </thead>
+                <tbody>
+    
+                    <tr>
+                        <td>23</td>
+                        <td>¿Cómo se percibe la integración de nuevas tecnologías (IA, VR/AR, producción vir...</td>
+                        <td>2</td>
+                        <td>0</td>
+                        <td>0.000</td>
+                        <td>0.0%</td>
+                    </tr>
+        
+                    <tr>
+                        <td>24</td>
+                        <td>¿Qué discursos circulan online en España sobre &#x27;el futuro del entretenimiento&#x27; y...</td>
+                        <td>2</td>
+                        <td>0</td>
+                        <td>0.000</td>
+                        <td>0.0%</td>
+                    </tr>
+        
+                    <tr>
+                        <td>11</td>
+                        <td>¿Qué canales y plataformas digitales (TikTok, YouTube, Twitch, Instagram, Spotif...</td>
+                        <td>2</td>
+                        <td>0</td>
+                        <td>0.000</td>
+                        <td>0.0%</td>
+                    </tr>
+        
+                    <tr>
+                        <td>8</td>
+                        <td>¿Qué tipo de argumentos, datos o testimonios resultan más persuasivos para conve...</td>
+                        <td>2</td>
+                        <td>0</td>
+                        <td>0.000</td>
+                        <td>0.0%</td>
+                    </tr>
+        
+                    <tr>
+                        <td>19</td>
+                        <td>¿En qué contextos aparece The Core School vinculado a marcas del sector audiovis...</td>
+                        <td>2</td>
+                        <td>0</td>
+                        <td>0.000</td>
+                        <td>0.0%</td>
+                    </tr>
+        
+                    <tr>
+                        <td>4</td>
+                        <td>¿Qué tipos de trabajos o estilos de vida rechazan explícitamente los jóvenes ind...</td>
+                        <td>2</td>
+                        <td>0</td>
+                        <td>0.000</td>
+                        <td>0.0%</td>
+                    </tr>
+        
+                    <tr>
+                        <td>21</td>
+                        <td>¿Qué experiencias narran los estudiantes actuales o antiguos de The Core School ...</td>
+                        <td>2</td>
+                        <td>0</td>
+                        <td>0.000</td>
+                        <td>0.0%</td>
+                    </tr>
+        
+                    <tr>
+                        <td>14</td>
+                        <td>¿Cómo evoluciona el &#x27;share of voice&#x27; digital en España entre The Core School y s...</td>
+                        <td>2</td>
+                        <td>0</td>
+                        <td>0.000</td>
+                        <td>0.0%</td>
+                    </tr>
+        
+                    <tr>
+                        <td>3</td>
+                        <td>¿Cuáles son las motivaciones principales que impulsan a los jóvenes indecisos en...</td>
+                        <td>2</td>
+                        <td>0</td>
+                        <td>0.000</td>
+                        <td>0.0%</td>
+                    </tr>
+        
+                    <tr>
+                        <td>17</td>
+                        <td>¿Cómo se percibe la empleabilidad de los titulados en carreras de entretenimient...</td>
+                        <td>2</td>
+                        <td>0</td>
+                        <td>0.000</td>
+                        <td>0.0%</td>
+                    </tr>
+        
+                    <tr>
+                        <td>22</td>
+                        <td>¿Qué expectativas expresan los jóvenes en España sobre la experiencia universita...</td>
+                        <td>2</td>
+                        <td>0</td>
+                        <td>0.000</td>
+                        <td>0.0%</td>
+                    </tr>
+        
+                    <tr>
+                        <td>20</td>
+                        <td>¿Qué impacto tienen las colaboraciones de The Core School con profesionales reco...</td>
+                        <td>2</td>
+                        <td>0</td>
+                        <td>0.000</td>
+                        <td>0.0%</td>
+                    </tr>
+        
+                    <tr>
+                        <td>13</td>
+                        <td>¿Qué menciones y percepciones generan otras instituciones españolas de formación...</td>
+                        <td>2</td>
+                        <td>0</td>
+                        <td>0.000</td>
+                        <td>0.0%</td>
+                    </tr>
+        
+                    <tr>
+                        <td>9</td>
+                        <td>¿Qué otras alternativas de formación (FP, grados universitarios, academias de ci...</td>
+                        <td>2</td>
+                        <td>0</td>
+                        <td>0.000</td>
+                        <td>0.0%</td>
+                    </tr>
+        
+                    <tr>
+                        <td>7</td>
+                        <td>¿Cuáles son las preocupaciones más repetidas por los padres en España cuando sus...</td>
+                        <td>2</td>
+                        <td>0</td>
+                        <td>0.000</td>
+                        <td>0.0%</td>
+                    </tr>
+        
+                </tbody>
+            </table>
+        </div>
+        
+        <div class="section">
+            <h2>Últimas 20 Menciones</h2>
+    
+            <div class="mention-card">
+                <div class="mention-header">
+                    <span class="mention-id">Mención #1 (ID: 48)</span>
+                    <span class="mention-date">2025-09-03 14:03:58</span>
+                </div>
+                <div class="mention-content">
+                    <strong>Query:</strong> ¿Qué discursos circulan online en España sobre &#x27;el futuro del entretenimiento&#x27; y &#x27;los empleos creati<br>
+                    <strong>Marca:</strong> The Core School<br>
+                    <strong>Fuente:</strong> pplx-7b-chat | 
+                    <strong>Motor:</strong> pplx-7b-chat<br>
+                    <strong>URL:</strong> N/A<br>
+                    <strong>Título:</strong> N/A<br>
+                    <strong>Sentiment:</strong> 0.000
+                </div>
+                
+                <div class="expandable" onclick="toggleContent('response-48')">
+                    <strong>▼ Ver Respuesta IA</strong>
+                </div>
+                <div id="response-48" class="collapsed">
+                    <div class="mention-response">
+                        &lt;think&gt;
+La consulta está en español y me pide analizar los discursos online en España sobre el futuro del entretenimiento y los empleos creativos del mañana, y cómo The Core School puede conectar su propuesta educativa con esos mensajes.
+
+De los resultados de búsqueda puedo extraer información relevante:
+
+1. Del resultado [1] tengo información sobre innovaciones tecnológicas que marcarán el 2025 en entretenimiento
+2. Del resultado [2] y [4] tengo información específica sobre The Core School
+3. D...
+                    </div>
+                </div>
+            </div>
+        
+            <div class="mention-card">
+                <div class="mention-header">
+                    <span class="mention-id">Mención #2 (ID: 47)</span>
+                    <span class="mention-date">2025-09-03 14:03:22</span>
+                </div>
+                <div class="mention-content">
+                    <strong>Query:</strong> ¿Qué discursos circulan online en España sobre &#x27;el futuro del entretenimiento&#x27; y &#x27;los empleos creati<br>
+                    <strong>Marca:</strong> The Core School<br>
+                    <strong>Fuente:</strong> gpt-4 | 
+                    <strong>Motor:</strong> gpt-4<br>
+                    <strong>URL:</strong> N/A<br>
+                    <strong>Título:</strong> N/A<br>
+                    <strong>Sentiment:</strong> 0.000
+                </div>
+                
+                <div class="expandable" onclick="toggleContent('response-47')">
+                    <strong>▼ Ver Respuesta IA</strong>
+                </div>
+                <div id="response-47" class="collapsed">
+                    <div class="mention-response">
+                        En España, los discursos sobre &#x27;el futuro del entretenimiento&#x27; y &#x27;los empleos creativos del mañana&#x27; suelen centrarse en varios temas clave:
+
+1. **Digitalización y Nuevas Tecnologías**: Se habla de cómo la inteligencia artificial, la realidad virtual y aumentada, y el streaming están transformando la industria del entretenimiento. Los profesionales del sector están cada vez más interesados en habilidades tecnológicas y en cómo estas pueden integrarse en la creación de contenido.
+
+2. **Diversidad ...
+                    </div>
+                </div>
+            </div>
+        
+            <div class="mention-card">
+                <div class="mention-header">
+                    <span class="mention-id">Mención #3 (ID: 46)</span>
+                    <span class="mention-date">2025-09-03 14:02:49</span>
+                </div>
+                <div class="mention-content">
+                    <strong>Query:</strong> ¿Cómo se percibe la integración de nuevas tecnologías (IA, VR/AR, producción virtual, música digital<br>
+                    <strong>Marca:</strong> The Core School<br>
+                    <strong>Fuente:</strong> pplx-7b-chat | 
+                    <strong>Motor:</strong> pplx-7b-chat<br>
+                    <strong>URL:</strong> N/A<br>
+                    <strong>Título:</strong> N/A<br>
+                    <strong>Sentiment:</strong> 0.000
+                </div>
+                
+                <div class="expandable" onclick="toggleContent('response-46')">
+                    <strong>▼ Ver Respuesta IA</strong>
+                </div>
+                <div id="response-46" class="collapsed">
+                    <div class="mention-response">
+                        &lt;think&gt;
+The user is asking about how the integration of new technologies (AI, VR/AR, virtual production, digital music) is perceived in audiovisual and entertainment training in Spain, and what opportunities The Core School can take advantage of. Let me analyze the search results:
+
+From search result 1:
+- The Core is presenting at Aula 2025, showing how audiovisual education is evolving towards a more practical, immersive and innovative approach
+- They&#x27;re integrating advanced industry tools like...
+                    </div>
+                </div>
+            </div>
+        
+            <div class="mention-card">
+                <div class="mention-header">
+                    <span class="mention-id">Mención #4 (ID: 45)</span>
+                    <span class="mention-date">2025-09-03 14:02:12</span>
+                </div>
+                <div class="mention-content">
+                    <strong>Query:</strong> ¿Cómo se percibe la integración de nuevas tecnologías (IA, VR/AR, producción virtual, música digital<br>
+                    <strong>Marca:</strong> The Core School<br>
+                    <strong>Fuente:</strong> gpt-4 | 
+                    <strong>Motor:</strong> gpt-4<br>
+                    <strong>URL:</strong> N/A<br>
+                    <strong>Título:</strong> N/A<br>
+                    <strong>Sentiment:</strong> 0.000
+                </div>
+                
+                <div class="expandable" onclick="toggleContent('response-45')">
+                    <strong>▼ Ver Respuesta IA</strong>
+                </div>
+                <div id="response-45" class="collapsed">
+                    <div class="mention-response">
+                        La integración de nuevas tecnologías como la inteligencia artificial (IA), la realidad virtual (VR), la realidad aumentada (AR), la producción virtual y la música digital en la formación audiovisual y de entretenimiento en España se percibe como una evolución necesaria y positiva. Estas tecnologías están transformando la manera en que se crean, distribuyen y consumen contenidos, lo que a su vez impacta en la formación de los profesionales del sector.
+
+### Percepción de la integración de nuevas t...
+                    </div>
+                </div>
+            </div>
+        
+            <div class="mention-card">
+                <div class="mention-header">
+                    <span class="mention-id">Mención #5 (ID: 44)</span>
+                    <span class="mention-date">2025-09-03 14:01:50</span>
+                </div>
+                <div class="mention-content">
+                    <strong>Query:</strong> ¿Qué expectativas expresan los jóvenes en España sobre la experiencia universitaria en carreras crea<br>
+                    <strong>Marca:</strong> The Core School<br>
+                    <strong>Fuente:</strong> pplx-7b-chat | 
+                    <strong>Motor:</strong> pplx-7b-chat<br>
+                    <strong>URL:</strong> N/A<br>
+                    <strong>Título:</strong> N/A<br>
+                    <strong>Sentiment:</strong> 0.000
+                </div>
+                
+                <div class="expandable" onclick="toggleContent('response-44')">
+                    <strong>▼ Ver Respuesta IA</strong>
+                </div>
+                <div id="response-44" class="collapsed">
+                    <div class="mention-response">
+                        &lt;think&gt;
+El usuario pregunta específicamente sobre las expectativas de los jóvenes en España sobre la experiencia universitaria en carreras creativas, y cómo esto se vincula con &quot;The Core School&quot;. 
+
+Revisando los resultados de búsqueda:
+
+1. El primer resultado habla sobre qué estudiar en 2025, mencionando tendencias como IA, biotecnología, sostenibilidad, pero no específicamente sobre carreras creativas o expectativas universitarias.
+
+2. El segundo resultado es muy relevante ya que habla sobre la...
+                    </div>
+                </div>
+            </div>
+        
+            <div class="mention-card">
+                <div class="mention-header">
+                    <span class="mention-id">Mención #6 (ID: 43)</span>
+                    <span class="mention-date">2025-09-03 14:01:14</span>
+                </div>
+                <div class="mention-content">
+                    <strong>Query:</strong> ¿Qué expectativas expresan los jóvenes en España sobre la experiencia universitaria en carreras crea<br>
+                    <strong>Marca:</strong> The Core School<br>
+                    <strong>Fuente:</strong> gpt-4 | 
+                    <strong>Motor:</strong> gpt-4<br>
+                    <strong>URL:</strong> N/A<br>
+                    <strong>Título:</strong> N/A<br>
+                    <strong>Sentiment:</strong> 0.000
+                </div>
+                
+                <div class="expandable" onclick="toggleContent('response-43')">
+                    <strong>▼ Ver Respuesta IA</strong>
+                </div>
+                <div id="response-43" class="collapsed">
+                    <div class="mention-response">
+                        Los jóvenes en España que eligen carreras creativas suelen tener altas expectativas sobre su experiencia universitaria. Estas expectativas incluyen:
+
+1. **Vida en campus**: Los estudiantes buscan un ambiente dinámico y colaborativo, donde puedan interactuar con otros creativos, participar en actividades extracurriculares y disfrutar de un entorno inspirador que fomente la creatividad.
+
+2. **Networking**: Existe una fuerte expectativa de construir redes de contactos que puedan ser útiles en su fu...
+                    </div>
+                </div>
+            </div>
+        
+            <div class="mention-card">
+                <div class="mention-header">
+                    <span class="mention-id">Mención #7 (ID: 42)</span>
+                    <span class="mention-date">2025-09-03 14:00:52</span>
+                </div>
+                <div class="mention-content">
+                    <strong>Query:</strong> ¿Qué experiencias narran los estudiantes actuales o antiguos de The Core School en redes sociales so<br>
+                    <strong>Marca:</strong> The Core School<br>
+                    <strong>Fuente:</strong> pplx-7b-chat | 
+                    <strong>Motor:</strong> pplx-7b-chat<br>
+                    <strong>URL:</strong> N/A<br>
+                    <strong>Título:</strong> N/A<br>
+                    <strong>Sentiment:</strong> 0.000
+                </div>
+                
+                <div class="expandable" onclick="toggleContent('response-42')">
+                    <strong>▼ Ver Respuesta IA</strong>
+                </div>
+                <div id="response-42" class="collapsed">
+                    <div class="mention-response">
+                        &lt;think&gt;
+El usuario me está preguntando específicamente sobre experiencias que narran estudiantes actuales o antiguos de The Core School en redes sociales, enfocándose en el ambiente, prácticas, oportunidades laborales, y qué emociones predominan.
+
+Mirando los resultados de búsqueda:
+
+1. El primer resultado habla de una campaña &#x27;#EsNuestroCore&#x27; protagonizada por 13 estudiantes de la escuela, pero no son testimonios específicos en redes sociales sobre experiencias.
+
+2. El segundo resultado es del ...
+                    </div>
+                </div>
+            </div>
+        
+            <div class="mention-card">
+                <div class="mention-header">
+                    <span class="mention-id">Mención #8 (ID: 41)</span>
+                    <span class="mention-date">2025-09-03 14:00:28</span>
+                </div>
+                <div class="mention-content">
+                    <strong>Query:</strong> ¿Qué experiencias narran los estudiantes actuales o antiguos de The Core School en redes sociales so<br>
+                    <strong>Marca:</strong> The Core School<br>
+                    <strong>Fuente:</strong> gpt-4 | 
+                    <strong>Motor:</strong> gpt-4<br>
+                    <strong>URL:</strong> N/A<br>
+                    <strong>Título:</strong> N/A<br>
+                    <strong>Sentiment:</strong> 0.000
+                </div>
+                
+                <div class="expandable" onclick="toggleContent('response-41')">
+                    <strong>▼ Ver Respuesta IA</strong>
+                </div>
+                <div id="response-41" class="collapsed">
+                    <div class="mention-response">
+                        No tengo acceso a información en tiempo real o a redes sociales, por lo que no puedo proporcionar detalles específicos sobre las experiencias de los estudiantes de The Core School. Sin embargo, generalmente, los estudiantes suelen compartir sus experiencias en términos de ambiente académico, calidad de enseñanza, oportunidades de prácticas y laborales, así como la comunidad estudiantil.
+
+Las emociones que predominan en estas narrativas pueden variar, pero a menudo incluyen:
+
+1. **Satisfacción**:...
+                    </div>
+                </div>
+            </div>
+        
+            <div class="mention-card">
+                <div class="mention-header">
+                    <span class="mention-id">Mención #9 (ID: 40)</span>
+                    <span class="mention-date">2025-09-03 14:00:06</span>
+                </div>
+                <div class="mention-content">
+                    <strong>Query:</strong> ¿Qué impacto tienen las colaboraciones de The Core School con profesionales reconocidos o empresas d<br>
+                    <strong>Marca:</strong> The Core School<br>
+                    <strong>Fuente:</strong> pplx-7b-chat | 
+                    <strong>Motor:</strong> pplx-7b-chat<br>
+                    <strong>URL:</strong> N/A<br>
+                    <strong>Título:</strong> N/A<br>
+                    <strong>Sentiment:</strong> 0.000
+                </div>
+                
+                <div class="expandable" onclick="toggleContent('response-40')">
+                    <strong>▼ Ver Respuesta IA</strong>
+                </div>
+                <div id="response-40" class="collapsed">
+                    <div class="mention-response">
+                        &lt;think&gt;
+El usuario está preguntando sobre el impacto de las colaboraciones de The Core School con profesionales reconocidos o empresas del sector en su reputación online en España. Necesito analizar la información de los search results para proporcionar una respuesta comprehensiva.
+
+De los search results puedo extraer información sobre:
+
+1. Colaboraciones específicas mencionadas:
+- Atresmedia (empresa líder de comunicación en España)
+- Grupo Secuoya
+- Banijay
+- VIU (Universidad Internacional de ...
+                    </div>
+                </div>
+            </div>
+        
+            <div class="mention-card">
+                <div class="mention-header">
+                    <span class="mention-id">Mención #10 (ID: 39)</span>
+                    <span class="mention-date">2025-09-03 13:59:40</span>
+                </div>
+                <div class="mention-content">
+                    <strong>Query:</strong> ¿Qué impacto tienen las colaboraciones de The Core School con profesionales reconocidos o empresas d<br>
+                    <strong>Marca:</strong> The Core School<br>
+                    <strong>Fuente:</strong> gpt-4 | 
+                    <strong>Motor:</strong> gpt-4<br>
+                    <strong>URL:</strong> N/A<br>
+                    <strong>Título:</strong> N/A<br>
+                    <strong>Sentiment:</strong> 0.000
+                </div>
+                
+                <div class="expandable" onclick="toggleContent('response-39')">
+                    <strong>▼ Ver Respuesta IA</strong>
+                </div>
+                <div id="response-39" class="collapsed">
+                    <div class="mention-response">
+                        Las colaboraciones de The Core School con profesionales reconocidos o empresas del sector pueden tener un impacto significativo en su reputación online en España. Algunos de los efectos más destacados incluyen:
+
+1. **Aumento de Credibilidad**: Asociarse con figuras o empresas de renombre puede aumentar la percepción de credibilidad y confianza en la institución. Los usuarios tienden a confiar más en una escuela que tiene vínculos con profesionales respetados.
+
+2. **Mejora de la Visibilidad**: Es...
+                    </div>
+                </div>
+            </div>
+        
+            <div class="mention-card">
+                <div class="mention-header">
+                    <span class="mention-id">Mención #11 (ID: 38)</span>
+                    <span class="mention-date">2025-09-03 13:59:19</span>
+                </div>
+                <div class="mention-content">
+                    <strong>Query:</strong> ¿En qué contextos aparece The Core School vinculado a marcas del sector audiovisual y entretenimient<br>
+                    <strong>Marca:</strong> The Core School<br>
+                    <strong>Fuente:</strong> pplx-7b-chat | 
+                    <strong>Motor:</strong> pplx-7b-chat<br>
+                    <strong>URL:</strong> N/A<br>
+                    <strong>Título:</strong> N/A<br>
+                    <strong>Sentiment:</strong> 0.000
+                </div>
+                
+                <div class="expandable" onclick="toggleContent('response-38')">
+                    <strong>▼ Ver Respuesta IA</strong>
+                </div>
+                <div id="response-38" class="collapsed">
+                    <div class="mention-response">
+                        &lt;think&gt;
+El usuario está preguntando en español sobre los contextos en los que The Core School aparece vinculado a marcas del sector audiovisual y entretenimiento, y qué percepción genera. Necesito analizar los resultados de búsqueda para encontrar información específica sobre las colaboraciones y conexiones de la escuela con empresas del sector.
+
+Veamos qué información relevante hay en los resultados:
+
+Del resultado [1] y [2]:
+- The Core colabora con firmas clave de la industria como Atresmedia,...
+                    </div>
+                </div>
+            </div>
+        
+            <div class="mention-card">
+                <div class="mention-header">
+                    <span class="mention-id">Mención #12 (ID: 37)</span>
+                    <span class="mention-date">2025-09-03 13:58:46</span>
+                </div>
+                <div class="mention-content">
+                    <strong>Query:</strong> ¿En qué contextos aparece The Core School vinculado a marcas del sector audiovisual y entretenimient<br>
+                    <strong>Marca:</strong> The Core School<br>
+                    <strong>Fuente:</strong> gpt-4 | 
+                    <strong>Motor:</strong> gpt-4<br>
+                    <strong>URL:</strong> N/A<br>
+                    <strong>Título:</strong> N/A<br>
+                    <strong>Sentiment:</strong> 0.000
+                </div>
+                
+                <div class="expandable" onclick="toggleContent('response-37')">
+                    <strong>▼ Ver Respuesta IA</strong>
+                </div>
+                <div id="response-37" class="collapsed">
+                    <div class="mention-response">
+                        The Core School ha aparecido en diversos contextos vinculados a marcas del sector audiovisual y entretenimiento, especialmente en el ámbito de la educación y la formación de talento en áreas creativas. A continuación, se detallan algunos de estos contextos y la percepción que genera:
+
+1. **Colaboraciones con Plataformas de Streaming**: The Core School ha establecido alianzas con plataformas de streaming para ofrecer programas de formación que preparen a los estudiantes para carreras en producció...
+                    </div>
+                </div>
+            </div>
+        
+            <div class="mention-card">
+                <div class="mention-header">
+                    <span class="mention-id">Mención #13 (ID: 36)</span>
+                    <span class="mention-date">2025-09-03 13:58:19</span>
+                </div>
+                <div class="mention-content">
+                    <strong>Query:</strong> ¿Qué perfiles del entretenimiento (realizador, productor, diseñador de videojuegos, guionista, anima<br>
+                    <strong>Marca:</strong> The Core School<br>
+                    <strong>Fuente:</strong> pplx-7b-chat | 
+                    <strong>Motor:</strong> pplx-7b-chat<br>
+                    <strong>URL:</strong> N/A<br>
+                    <strong>Título:</strong> N/A<br>
+                    <strong>Sentiment:</strong> 0.000
+                </div>
+                
+                <div class="expandable" onclick="toggleContent('response-36')">
+                    <strong>▼ Ver Respuesta IA</strong>
+                </div>
+                <div id="response-36" class="collapsed">
+                    <div class="mention-response">
+                        &lt;think&gt;
+Esta consulta me pide información sobre los perfiles de entretenimiento con mayor demanda en España en 2025. Voy a revisar los resultados de búsqueda para encontrar información específica sobre los perfiles mencionados: realizador, productor, diseñador de videojuegos, guionista, animador 3D, músico digital, especialista en marketing audiovisual.
+
+De los resultados de búsqueda:
+
+1. [1] Habla del crecimiento del sector entretenimiento en España, con un crecimiento del 5.3% hasta 2025, impu...
+                    </div>
+                </div>
+            </div>
+        
+            <div class="mention-card">
+                <div class="mention-header">
+                    <span class="mention-id">Mención #14 (ID: 35)</span>
+                    <span class="mention-date">2025-09-03 13:57:51</span>
+                </div>
+                <div class="mention-content">
+                    <strong>Query:</strong> ¿Qué perfiles del entretenimiento (realizador, productor, diseñador de videojuegos, guionista, anima<br>
+                    <strong>Marca:</strong> The Core School<br>
+                    <strong>Fuente:</strong> gpt-4 | 
+                    <strong>Motor:</strong> gpt-4<br>
+                    <strong>URL:</strong> N/A<br>
+                    <strong>Título:</strong> N/A<br>
+                    <strong>Sentiment:</strong> 0.000
+                </div>
+                
+                <div class="expandable" onclick="toggleContent('response-35')">
+                    <strong>▼ Ver Respuesta IA</strong>
+                </div>
+                <div id="response-35" class="collapsed">
+                    <div class="mention-response">
+                        No tengo acceso a datos en tiempo real o proyecciones específicas para el año 2025. Sin embargo, basándome en tendencias recientes y el crecimiento de la industria del entretenimiento, se puede anticipar que los siguientes perfiles podrían tener una alta demanda en España:
+
+1. **Diseñador de videojuegos**: Con el crecimiento constante de la industria de los videojuegos, se espera que la demanda de diseñadores y desarrolladores siga aumentando.
+
+2. **Animador 3D**: La animación 3D es fundamental ...
+                    </div>
+                </div>
+            </div>
+        
+            <div class="mention-card">
+                <div class="mention-header">
+                    <span class="mention-id">Mención #15 (ID: 34)</span>
+                    <span class="mention-date">2025-09-03 13:57:29</span>
+                </div>
+                <div class="mention-content">
+                    <strong>Query:</strong> ¿Cómo se percibe la empleabilidad de los titulados en carreras de entretenimiento y audiovisual en E<br>
+                    <strong>Marca:</strong> The Core School<br>
+                    <strong>Fuente:</strong> pplx-7b-chat | 
+                    <strong>Motor:</strong> pplx-7b-chat<br>
+                    <strong>URL:</strong> N/A<br>
+                    <strong>Título:</strong> N/A<br>
+                    <strong>Sentiment:</strong> 0.000
+                </div>
+                
+                <div class="expandable" onclick="toggleContent('response-34')">
+                    <strong>▼ Ver Respuesta IA</strong>
+                </div>
+                <div id="response-34" class="collapsed">
+                    <div class="mention-response">
+                        &lt;think&gt;
+El usuario pregunta sobre la empleabilidad de los titulados en carreras de entretenimiento y audiovisual en España, específicamente sobre salarios, estabilidad, proyección internacional y casos de éxito. Miremos qué información hay en los resultados de búsqueda:
+
+1. Fuente [1]: Habla de la demanda urgente de técnicos de FP de audiovisuales. Dice que la demanda ha crecido de 32,000 profesionales a 62,000 en el cuarto trimestre, crecimiento del 93% en tres años, salida laboral muy atractiv...
+                    </div>
+                </div>
+            </div>
+        
+            <div class="mention-card">
+                <div class="mention-header">
+                    <span class="mention-id">Mención #16 (ID: 33)</span>
+                    <span class="mention-date">2025-09-03 13:56:57</span>
+                </div>
+                <div class="mention-content">
+                    <strong>Query:</strong> ¿Cómo se percibe la empleabilidad de los titulados en carreras de entretenimiento y audiovisual en E<br>
+                    <strong>Marca:</strong> The Core School<br>
+                    <strong>Fuente:</strong> gpt-4 | 
+                    <strong>Motor:</strong> gpt-4<br>
+                    <strong>URL:</strong> N/A<br>
+                    <strong>Título:</strong> N/A<br>
+                    <strong>Sentiment:</strong> 0.000
+                </div>
+                
+                <div class="expandable" onclick="toggleContent('response-33')">
+                    <strong>▼ Ver Respuesta IA</strong>
+                </div>
+                <div id="response-33" class="collapsed">
+                    <div class="mention-response">
+                        La empleabilidad de los titulados en carreras de entretenimiento y audiovisual en España presenta un panorama mixto en términos de salarios, estabilidad y proyección internacional.
+
+### Salarios
+Los salarios en el sector audiovisual pueden variar considerablemente dependiendo de la especialización, la experiencia y el tipo de empleo. En general, los salarios iniciales para los recién graduados suelen ser bajos, oscilando entre los 18,000 y 25,000 euros anuales. Sin embargo, a medida que se adqui...
+                    </div>
+                </div>
+            </div>
+        
+            <div class="mention-card">
+                <div class="mention-header">
+                    <span class="mention-id">Mención #17 (ID: 32)</span>
+                    <span class="mention-date">2025-09-03 13:56:30</span>
+                </div>
+                <div class="mention-content">
+                    <strong>Query:</strong> ¿Qué tendencias emergentes en entretenimiento (IA en guion, producción virtual, animación 3D, gaming<br>
+                    <strong>Marca:</strong> The Core School<br>
+                    <strong>Fuente:</strong> pplx-7b-chat | 
+                    <strong>Motor:</strong> pplx-7b-chat<br>
+                    <strong>URL:</strong> N/A<br>
+                    <strong>Título:</strong> N/A<br>
+                    <strong>Sentiment:</strong> 0.000
+                </div>
+                
+                <div class="expandable" onclick="toggleContent('response-32')">
+                    <strong>▼ Ver Respuesta IA</strong>
+                </div>
+                <div id="response-32" class="collapsed">
+                    <div class="mention-response">
+                        &lt;think&gt;
+El usuario está preguntando sobre tendencias emergentes en entretenimiento en España, específicamente mencionando áreas como IA en guion, producción virtual, animación 3D, gaming competitivo, y marketing musical digital. También quiere saber las implicaciones para la formación.
+
+Revisando los resultados de búsqueda:
+
+1. El primer resultado [1] habla sobre tendencias en plataformas OTT y streaming para 2025, menciona el crecimiento del mercado OTT, personalización avanzada, IA, fragmentac...
+                    </div>
+                </div>
+            </div>
+        
+            <div class="mention-card">
+                <div class="mention-header">
+                    <span class="mention-id">Mención #18 (ID: 31)</span>
+                    <span class="mention-date">2025-09-03 13:55:46</span>
+                </div>
+                <div class="mention-content">
+                    <strong>Query:</strong> ¿Qué tendencias emergentes en entretenimiento (IA en guion, producción virtual, animación 3D, gaming<br>
+                    <strong>Marca:</strong> The Core School<br>
+                    <strong>Fuente:</strong> gpt-4 | 
+                    <strong>Motor:</strong> gpt-4<br>
+                    <strong>URL:</strong> N/A<br>
+                    <strong>Título:</strong> N/A<br>
+                    <strong>Sentiment:</strong> 0.000
+                </div>
+                
+                <div class="expandable" onclick="toggleContent('response-31')">
+                    <strong>▼ Ver Respuesta IA</strong>
+                </div>
+                <div id="response-31" class="collapsed">
+                    <div class="mention-response">
+                        En España, varias tendencias emergentes en el entretenimiento están ganando relevancia, especialmente en áreas como la inteligencia artificial (IA), la producción virtual, la animación 3D, el gaming competitivo y el marketing musical digital. A continuación, se detallan algunas de estas tendencias y sus implicaciones para la formación:
+
+1. **Inteligencia Artificial en Guion**:
+   - **Tendencia**: La IA se está utilizando para generar guiones, analizar tramas y predecir el éxito de contenidos. He...
+                    </div>
+                </div>
+            </div>
+        
+            <div class="mention-card">
+                <div class="mention-header">
+                    <span class="mention-id">Mención #19 (ID: 30)</span>
+                    <span class="mention-date">2025-09-03 13:55:19</span>
+                </div>
+                <div class="mention-content">
+                    <strong>Query:</strong> ¿Qué temas generan mayor conversación online en España sobre la industria del entretenimiento (serie<br>
+                    <strong>Marca:</strong> The Core School<br>
+                    <strong>Fuente:</strong> pplx-7b-chat | 
+                    <strong>Motor:</strong> pplx-7b-chat<br>
+                    <strong>URL:</strong> N/A<br>
+                    <strong>Título:</strong> N/A<br>
+                    <strong>Sentiment:</strong> 0.000
+                </div>
+                
+                <div class="expandable" onclick="toggleContent('response-30')">
+                    <strong>▼ Ver Respuesta IA</strong>
+                </div>
+                <div id="response-30" class="collapsed">
+                    <div class="mention-response">
+                        &lt;think&gt;
+El usuario pregunta en español sobre qué temas generan mayor conversación online en España sobre la industria del entretenimiento y qué oportunidades de formación emergen de esas conversaciones. Necesito analizar los resultados de búsqueda que están principalmente en español y extraer información sobre las tendencias, conversaciones y oportunidades.
+
+Vamos a ver qué información relevante puedo extraer de los resultados:
+
+Resultado [1]: Habla de cinco tendencias que transformarán la indus...
+                    </div>
+                </div>
+            </div>
+        
+            <div class="mention-card">
+                <div class="mention-header">
+                    <span class="mention-id">Mención #20 (ID: 29)</span>
+                    <span class="mention-date">2025-09-03 13:54:40</span>
+                </div>
+                <div class="mention-content">
+                    <strong>Query:</strong> ¿Qué temas generan mayor conversación online en España sobre la industria del entretenimiento (serie<br>
+                    <strong>Marca:</strong> The Core School<br>
+                    <strong>Fuente:</strong> gpt-4 | 
+                    <strong>Motor:</strong> gpt-4<br>
+                    <strong>URL:</strong> N/A<br>
+                    <strong>Título:</strong> N/A<br>
+                    <strong>Sentiment:</strong> 0.000
+                </div>
+                
+                <div class="expandable" onclick="toggleContent('response-29')">
+                    <strong>▼ Ver Respuesta IA</strong>
+                </div>
+                <div id="response-29" class="collapsed">
+                    <div class="mention-response">
+                        En España, los temas que generan mayor conversación online en la industria del entretenimiento incluyen:
+
+1. **Series y plataformas de streaming**: Las series originales de plataformas como Netflix, HBO y Amazon Prime son muy discutidas. Las conversaciones suelen girar en torno a estrenos, tramas, personajes y críticas.
+
+2. **Realities y programas de telerrealidad**: Programas como &quot;Gran Hermano&quot; o &quot;La Isla de las Tentaciones&quot; generan un gran interés y debate, especialmente en redes sociales.
+
+3...
+                    </div>
+                </div>
+            </div>
+        
+        </div>
+        
+        <div class="section">
+            <h2>Últimos 10 Insights</h2>
+    
+            <div class="insight-card">
+                <div class="mention-header">
+                    <span class="mention-id">Insight #1 (ID: 2)</span>
+                    <span class="mention-date">2025-09-03 13:40:43</span>
+                </div>
+                <div class="mention-content">
+                    <strong>Query:</strong> ¿Cuál es la estimación del número de jóvenes en España (16-25 años) que se declaran indecisos sobre <br>
+                    <strong>Marca:</strong> The Core School
+                </div>
+                
+                <div class="expandable" onclick="toggleContent('insight-2')">
+                    <strong>▼ Ver Contenido del Insight</strong>
+                </div>
+                <div id="insight-2" class="collapsed">
+        
+                        <div class="insight-section">
+                            <div class="insight-title">OPPORTUNITIES (2 items):</div>
+                            <div class="insight-list">
+                        • Crecimiento de la indecisión vocacional entre jóvenes<br>• Interés en áreas como informática, telecomunicaciones, ingenierías y salud<br>
+                            </div>
+                        </div>
+                        
+                        <div class="insight-section">
+                            <div class="insight-title">RISKS (2 items):</div>
+                            <div class="insight-list">
+                        • Aumento de la indecisión vocacional<br>• Desconocimiento de intereses emergentes en entretenimiento<br>
+                            </div>
+                        </div>
+                        
+                        <div class="insight-section">
+                            <div class="insight-title">TRENDS (2 items):</div>
+                            <div class="insight-list">
+                        • Aumento de la indecisión vocacional en jóvenes<br>• Intereses en sectores con mejores oportunidades de empleo<br>
+                            </div>
+                        </div>
+                        
+                </div>
+            </div>
+        
+            <div class="insight-card">
+                <div class="mention-header">
+                    <span class="mention-id">Insight #2 (ID: 3)</span>
+                    <span class="mention-date">2025-09-03 13:40:43</span>
+                </div>
+                <div class="mention-content">
+                    <strong>Query:</strong> ¿Qué &#x27;triggers&#x27; (eventos, experiencias, referentes culturales, estrenos de cine/series, influencers,<br>
+                    <strong>Marca:</strong> The Core School
+                </div>
+                
+                <div class="expandable" onclick="toggleContent('insight-3')">
+                    <strong>▼ Ver Contenido del Insight</strong>
+                </div>
+                <div id="insight-3" class="collapsed">
+        
+                        <div class="insight-section">
+                            <div class="insight-title">OPPORTUNITIES (2 items):</div>
+                            <div class="insight-list">
+                        • Crecimiento en carreras relacionadas con entretenimiento y tecnología.<br>• Aumento del interés en festivales y eventos culturales.<br>
+                            </div>
+                        </div>
+                        
+                        <div class="insight-section">
+                            <div class="insight-title">RISKS (2 items):</div>
+                            <div class="insight-list">
+                        • Inseguridad sobre la competencia en la industria.<br>• Dudas sobre las habilidades necesarias para ingresar a estas carreras.<br>
+                            </div>
+                        </div>
+                        
+                        <div class="insight-section">
+                            <div class="insight-title">TRENDS (2 items):</div>
+                            <div class="insight-list">
+                        • Interés creciente en carreras de entretenimiento y tecnología.<br>• Influencia de influencers y creadores de contenido en la toma de decisiones.<br>
+                            </div>
+                        </div>
+                        
+                </div>
+            </div>
+        
+            <div class="insight-card">
+                <div class="mention-header">
+                    <span class="mention-id">Insight #3 (ID: 4)</span>
+                    <span class="mention-date">2025-09-03 13:40:43</span>
+                </div>
+                <div class="mention-content">
+                    <strong>Query:</strong> ¿Qué &#x27;triggers&#x27; (eventos, experiencias, referentes culturales, estrenos de cine/series, influencers,<br>
+                    <strong>Marca:</strong> The Core School
+                </div>
+                
+                <div class="expandable" onclick="toggleContent('insight-4')">
+                    <strong>▼ Ver Contenido del Insight</strong>
+                </div>
+                <div id="insight-4" class="collapsed">
+        
+                        <div class="insight-section">
+                            <div class="insight-title">RISKS (2 items):</div>
+                            <div class="insight-list">
+                        • Presión y abrumamiento en la elección de carrera<br>• Ansiedad e inseguridad entre jóvenes<br>
+                            </div>
+                        </div>
+                        
+                        <div class="insight-section">
+                            <div class="insight-title">TRENDS (2 items):</div>
+                            <div class="insight-list">
+                        • Interés en carreras creativas<br>• Teatro como forma de expresión emocional<br>
+                            </div>
+                        </div>
+                        
+                </div>
+            </div>
+        
+            <div class="insight-card">
+                <div class="mention-header">
+                    <span class="mention-id">Insight #4 (ID: 15)</span>
+                    <span class="mention-date">2025-09-03 13:40:43</span>
+                </div>
+                <div class="mention-content">
+                    <strong>Query:</strong> ¿Qué tipo de argumentos, datos o testimonios resultan más persuasivos para convencer a los padres en<br>
+                    <strong>Marca:</strong> The Core School
+                </div>
+                
+                <div class="expandable" onclick="toggleContent('insight-15')">
+                    <strong>▼ Ver Contenido del Insight</strong>
+                </div>
+                <div id="insight-15" class="collapsed">
+        
+                        <div class="insight-section">
+                            <div class="insight-title">OPPORTUNITIES (2 items):</div>
+                            <div class="insight-list">
+                        • Crecimiento de la industria audiovisual<br>• Demanda de nuevos talentos en entretenimiento<br>
+                            </div>
+                        </div>
+                        
+                        <div class="insight-section">
+                            <div class="insight-title">RISKS (2 items):</div>
+                            <div class="insight-list">
+                        • Competencia con carreras tradicionales<br>• Desconfianza de los padres sobre la viabilidad laboral<br>
+                            </div>
+                        </div>
+                        
+                        <div class="insight-section">
+                            <div class="insight-title">TRENDS (2 items):</div>
+                            <div class="insight-list">
+                        • Aumento de plataformas de streaming<br>• Interés en formación en nuevas tecnologías<br>
+                            </div>
+                        </div>
+                        
+                        <div class="insight-section">
+                            <div class="insight-title">CALLS TO ACTION (2 items):</div>
+                            <div class="insight-list">
+                        • Las empresas deberían establecer alianzas con instituciones educativas.<br>• Se deben organizar eventos donde exalumnos compartan sus experiencias.<br>
+                            </div>
+                        </div>
+                        
+                </div>
+            </div>
+        
+            <div class="insight-card">
+                <div class="mention-header">
+                    <span class="mention-id">Insight #5 (ID: 5)</span>
+                    <span class="mention-date">2025-09-03 13:40:43</span>
+                </div>
+                <div class="mention-content">
+                    <strong>Query:</strong> ¿Cuáles son las motivaciones principales que impulsan a los jóvenes indecisos en España a considerar<br>
+                    <strong>Marca:</strong> The Core School
+                </div>
+                
+                <div class="expandable" onclick="toggleContent('insight-5')">
+                    <strong>▼ Ver Contenido del Insight</strong>
+                </div>
+                <div id="insight-5" class="collapsed">
+        
+                        <div class="insight-section">
+                            <div class="insight-title">OPPORTUNITIES (2 items):</div>
+                            <div class="insight-list">
+                        • Crecimiento en carreras creativas y de entretenimiento<br>• Interés en trabajos flexibles y freelance<br>
+                            </div>
+                        </div>
+                        
+                        <div class="insight-section">
+                            <div class="insight-title">RISKS (2 items):</div>
+                            <div class="insight-list">
+                        • Rechazo hacia estudios tradicionales<br>• Percepción negativa de la rigidez en la educación<br>
+                            </div>
+                        </div>
+                        
+                        <div class="insight-section">
+                            <div class="insight-title">TRENDS (2 items):</div>
+                            <div class="insight-list">
+                        • Búsqueda de propósito en el trabajo<br>• Interés en proyección internacional<br>
+                            </div>
+                        </div>
+                        
+                </div>
+            </div>
+        
+            <div class="insight-card">
+                <div class="mention-header">
+                    <span class="mention-id">Insight #6 (ID: 6)</span>
+                    <span class="mention-date">2025-09-03 13:40:43</span>
+                </div>
+                <div class="mention-content">
+                    <strong>Query:</strong> ¿Cuáles son las motivaciones principales que impulsan a los jóvenes indecisos en España a considerar<br>
+                    <strong>Marca:</strong> The Core School
+                </div>
+                
+                <div class="expandable" onclick="toggleContent('insight-6')">
+                    <strong>▼ Ver Contenido del Insight</strong>
+                </div>
+                <div id="insight-6" class="collapsed">
+        
+                        <div class="insight-section">
+                            <div class="insight-title">OPPORTUNITIES (2 items):</div>
+                            <div class="insight-list">
+                        • Aumentar el enfoque en las motivaciones intrínsecas para mejorar la elección de estudios.<br>• Desarrollar programas de orientación vocacional que aborden la indecisión entre los jóvenes.<br>
+                            </div>
+                        </div>
+                        
+                        <div class="insight-section">
+                            <div class="insight-title">RISKS (2 items):</div>
+                            <div class="insight-list">
+                        • La desconexión entre elecciones de estudios y verdaderos intereses puede llevar a decisiones equivocadas.<br>• El alto porcentaje de indecisión en comunidades como Cantabria puede afectar la empleabilidad futura.<br>
+                            </div>
+                        </div>
+                        
+                        <div class="insight-section">
+                            <div class="insight-title">TRENDS (2 items):</div>
+                            <div class="insight-list">
+                        • Aumento del interés en carreras creativas y de entretenimiento.<br>• Mayor relevancia de las motivaciones personales en la elección de estudios.<br>
+                            </div>
+                        </div>
+                        
+                        <div class="insight-section">
+                            <div class="insight-title">CALLS TO ACTION (1 items):</div>
+                            <div class="insight-list">
+                        • Reducir la indecisión y aumentar el peso de las preferencias implícitas a la hora de decidir unos estudios.<br>
+                            </div>
+                        </div>
+                        
+                </div>
+            </div>
+        
+            <div class="insight-card">
+                <div class="mention-header">
+                    <span class="mention-id">Insight #7 (ID: 7)</span>
+                    <span class="mention-date">2025-09-03 13:40:43</span>
+                </div>
+                <div class="mention-content">
+                    <strong>Query:</strong> ¿Qué tipos de trabajos o estilos de vida rechazan explícitamente los jóvenes indecisos en España (ej<br>
+                    <strong>Marca:</strong> The Core School
+                </div>
+                
+                <div class="expandable" onclick="toggleContent('insight-7')">
+                    <strong>▼ Ver Contenido del Insight</strong>
+                </div>
+                <div id="insight-7" class="collapsed">
+        
+                        <div class="insight-section">
+                            <div class="insight-title">OPPORTUNITIES (2 items):</div>
+                            <div class="insight-list">
+                        • Crecimiento en carreras creativas como animación y diseño de videojuegos.<br>• Oportunidades en marketing musical y producción audiovisual.<br>
+                            </div>
+                        </div>
+                        
+                        <div class="insight-section">
+                            <div class="insight-title">RISKS (2 items):</div>
+                            <div class="insight-list">
+                        • Percepción negativa de trabajos tradicionales como 9 a 5 y oposiciones.<br>• Rechazo hacia entornos laborales rígidos.<br>
+                            </div>
+                        </div>
+                        
+                        <div class="insight-section">
+                            <div class="insight-title">TRENDS (2 items):</div>
+                            <div class="insight-list">
+                        • Preferencia por trabajos creativos y dinámicos.<br>• Búsqueda de estilos de vida más flexibles.<br>
+                            </div>
+                        </div>
+                        
+                </div>
+            </div>
+        
+            <div class="insight-card">
+                <div class="mention-header">
+                    <span class="mention-id">Insight #8 (ID: 8)</span>
+                    <span class="mention-date">2025-09-03 13:40:43</span>
+                </div>
+                <div class="mention-content">
+                    <strong>Query:</strong> ¿Qué tipos de trabajos o estilos de vida rechazan explícitamente los jóvenes indecisos en España (ej<br>
+                    <strong>Marca:</strong> The Core School
+                </div>
+                
+                <div class="expandable" onclick="toggleContent('insight-8')">
+                    <strong>▼ Ver Contenido del Insight</strong>
+                </div>
+                <div id="insight-8" class="collapsed">
+        
+                        <div class="insight-section">
+                            <div class="insight-title">OPPORTUNITIES (2 items):</div>
+                            <div class="insight-list">
+                        • Aumento de la búsqueda de trabajos flexibles y con mejor equilibrio vida-trabajo.<br>• Interés creciente en carreras creativas y del sector audiovisual.<br>
+                            </div>
+                        </div>
+                        
+                        <div class="insight-section">
+                            <div class="insight-title">RISKS (2 items):</div>
+                            <div class="insight-list">
+                        • Desafección laboral entre los jóvenes que puede afectar la retención de talento.<br>• Percepción negativa de trabajos tradicionales y precarios.<br>
+                            </div>
+                        </div>
+                        
+                        <div class="insight-section">
+                            <div class="insight-title">TRENDS (2 items):</div>
+                            <div class="insight-list">
+                        • Renuncia silenciosa o &#x27;quiet quitting&#x27; como fenómeno emergente.<br>• Prioridad en la salud mental y el equilibrio entre trabajo y vida personal.<br>
+                            </div>
+                        </div>
+                        
+                </div>
+            </div>
+        
+            <div class="insight-card">
+                <div class="mention-header">
+                    <span class="mention-id">Insight #9 (ID: 9)</span>
+                    <span class="mention-date">2025-09-03 13:40:43</span>
+                </div>
+                <div class="mention-content">
+                    <strong>Query:</strong> ¿Cómo perciben los jóvenes en España la industria del entretenimiento y audiovisual (cine, series, v<br>
+                    <strong>Marca:</strong> The Core School
+                </div>
+                
+                <div class="expandable" onclick="toggleContent('insight-9')">
+                    <strong>▼ Ver Contenido del Insight</strong>
+                </div>
+                <div id="insight-9" class="collapsed">
+        
+                        <div class="insight-section">
+                            <div class="insight-title">OPPORTUNITIES (2 items):</div>
+                            <div class="insight-list">
+                        • Crecimiento en la demanda de contenido original<br>• Interés en nuevas tecnologías como realidad virtual y aumentada<br>
+                            </div>
+                        </div>
+                        
+                        <div class="insight-section">
+                            <div class="insight-title">RISKS (2 items):</div>
+                            <div class="insight-list">
+                        • Competitividad del sector<br>• Necesidad de formación especializada<br>
+                            </div>
+                        </div>
+                        
+                        <div class="insight-section">
+                            <div class="insight-title">TRENDS (2 items):</div>
+                            <div class="insight-list">
+                        • Auge de plataformas de streaming<br>• Interactividad en videojuegos<br>
+                            </div>
+                        </div>
+                        
+                </div>
+            </div>
+        
+            <div class="insight-card">
+                <div class="mention-header">
+                    <span class="mention-id">Insight #10 (ID: 1)</span>
+                    <span class="mention-date">2025-09-03 13:40:43</span>
+                </div>
+                <div class="mention-content">
+                    <strong>Query:</strong> ¿Cuál es la estimación del número de jóvenes en España (16-25 años) que se declaran indecisos sobre <br>
+                    <strong>Marca:</strong> The Core School
+                </div>
+                
+                <div class="expandable" onclick="toggleContent('insight-1')">
+                    <strong>▼ Ver Contenido del Insight</strong>
+                </div>
+                <div id="insight-1" class="collapsed">
+        
+                        <div class="insight-section">
+                            <div class="insight-title">OPPORTUNITIES (2 items):</div>
+                            <div class="insight-list">
+                        • Crecimiento en la industria de videojuegos<br>• Interés en marketing digital<br>
+                            </div>
+                        </div>
+                        
+                        <div class="insight-section">
+                            <div class="insight-title">RISKS (2 items):</div>
+                            <div class="insight-list">
+                        • Indecisión sobre el futuro académico y profesional<br>• Dependencia de plataformas de streaming<br>
+                            </div>
+                        </div>
+                        
+                        <div class="insight-section">
+                            <div class="insight-title">TRENDS (2 items):</div>
+                            <div class="insight-list">
+                        • Aumento del interés en contenido de animación<br>• Crecimiento de comunidades digitales<br>
+                            </div>
+                        </div>
+                        
+                </div>
+            </div>
+        
+        </div>
+    </div>
+    
+    <div class="footer">
+        <p>AI Visibility MVP - Reporte generado automáticamente desde base de datos PostgreSQL</p>
+    </div>
+    
+    <script>
+        function toggleContent(id) {
+            const element = document.getElementById(id);
+            const trigger = element.previousElementSibling;
+            
+            if (element.classList.contains('collapsed')) {
+                element.classList.remove('collapsed');
+                trigger.innerHTML = '<strong>▲ Ocultar</strong>';
+            } else {
+                element.classList.add('collapsed');
+                trigger.innerHTML = '<strong>▼ Ver Contenido</strong>';
+            }
+        }
+    </script>
+</body>
+</html>
+    
