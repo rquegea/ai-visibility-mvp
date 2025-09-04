@@ -1,349 +1,158 @@
-#!/usr/bin/env python3
-"""
-Script COMPLETO para mostrar ABSOLUTAMENTE TODOS los datos de la base de datos
-"""
-import psycopg2
-from dotenv import load_dotenv
+# backend/src/scheduler/poll.py (Versión final y corregida)
+
 import os
+import time
 import json
-from datetime import datetime, timedelta
+import logging
+from datetime import datetime, timezone
+from typing import Callable, Union, List, Tuple, Dict, Any
 
-load_dotenv()
+import psycopg2
 
-conn = psycopg2.connect(
-    host=os.getenv('DB_HOST', 'localhost'),
-    port=int(os.getenv('DB_PORT', 5433)),
-    database=os.getenv('DB_NAME', 'ai_visibility'),
-    user=os.getenv('DB_USER', 'postgres'),
-    password=os.getenv('DB_PASSWORD', 'postgres')
+from src.engines.openai_engine import fetch_response, extract_insights
+from src.engines.perplexity import fetch_perplexity_response
+from src.engines.serp import get_search_results as fetch_serp_response # <-- ÚNICA IMPORTACIÓN CORRECTA
+from src.engines.sentiment import analyze_sentiment
+from src.utils.slack import send_slack_alert
+
+logging.basicConfig(
+    filename="logs/poll.log",
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(message)s",
 )
 
-cur = conn.cursor()
+SENTIMENT_THRESHOLD = -0.3
 
-print("🗄️ DUMP COMPLETO DE BASE DE DATOS AI VISIBILITY")
-print("=" * 80)
+DB_CFG = dict(
+    host=os.getenv("POSTGRES_HOST", "localhost"),
+    port=int(os.getenv("POSTGRES_PORT", 5433)),
+    database=os.getenv("POSTGRES_DB", "ai_visibility"),
+    user=os.getenv("POSTGRES_USER", "postgres"),
+    password=os.getenv("POSTGRES_PASSWORD", "postgres"),
+)
 
-# ===============================================
-# 1. ESTRUCTURA DE TABLAS
-# ===============================================
-print("\n🏗️ ESTRUCTURA DE TABLAS:")
-print("-" * 40)
+def summarize_and_extract_topics(text: str) -> Tuple[str, List[str]]:
+    prompt = f"""
+Analiza el siguiente texto y devuelve un objeto JSON con dos claves:
+1. "summary": Un resumen conciso y atractivo del texto en una sola frase (máximo 25 palabras).
+2. "key_topics": Una lista de los 3 a 5 temas, marcas o conceptos más importantes mencionados.
 
-tables_info = """
-SELECT 
-    table_name,
-    column_name,
-    data_type,
-    is_nullable
-FROM information_schema.columns 
-WHERE table_schema = 'public' 
-ORDER BY table_name, ordinal_position
+Texto a analizar:
+\"\"\"{text[:4000]}\"\"\"
+
+Responde únicamente con el JSON.
 """
+    try:
+        raw_response = fetch_response(prompt, model="gpt-4o-mini", temperature=0.2, max_tokens=300)
+        if raw_response.startswith("```json"):
+            raw_response = raw_response[7:-3].strip()
+        data = json.loads(raw_response)
+        summary = data.get("summary", "No se pudo generar un resumen.")
+        key_topics = data.get("key_topics", [])
+        return summary, key_topics
+    except Exception as e:
+        logging.error("❌ Error al generar resumen y temas: %s", e)
+        return text[:150] + "...", []
 
-cur.execute(tables_info)
-current_table = None
-for row in cur.fetchall():
-    table, column, data_type, nullable = row
-    if table != current_table:
-        print(f"\n📋 TABLA: {table.upper()}")
-        current_table = table
-    print(f"   {column}: {data_type} {'(NULL)' if nullable == 'YES' else '(NOT NULL)'}")
+def insert_mention(cur, data: Dict[str, Any]):
+    cur.execute(
+        """
+        INSERT INTO mentions (
+            query_id, engine, source, response, sentiment, emotion, 
+            confidence_score, source_title, source_url, language, created_at,
+            summary, key_topics, generated_insight_id
+        )
+        VALUES (
+            %(query_id)s, %(engine)s, %(source)s, %(response)s, %(sentiment)s, %(emotion)s,
+            %(confidence)s, %(source_title)s, %(source_url)s, 'auto', %(created_at)s,
+            %(summary)s, %(key_topics)s, %(insight_id)s
+        )
+        RETURNING id
+        """,
+        data,
+    )
+    return cur.fetchone()[0]
 
-# ===============================================
-# 2. QUERIES - TODAS
-# ===============================================
-print("\n\n🎯 TODAS LAS QUERIES:")
-print("-" * 40)
+def insert_insights(cur, query_id: int, insights_payload: dict) -> int:
+    cur.execute(
+        "INSERT INTO insights (query_id, payload) VALUES (%s, %s) RETURNING id",
+        (query_id, json.dumps(insights_payload)),
+    )
+    return cur.fetchone()[0]
 
-cur.execute("SELECT COUNT(*) FROM queries")
-total_queries = cur.fetchone()[0]
-print(f"📊 Total de queries: {total_queries}")
+def run_engine(name: str, fetch_fn: Callable[[str], Union[str, list]],
+               query_id: int, query_text: str, cur) -> None:
+    logging.info("▶ %s | query «%s»", name, query_text)
 
-if total_queries > 0:
-    cur.execute("""
-        SELECT 
-            id, 
-            query, 
-            brand, 
-            enabled, 
-            created_at,
-            updated_at
-        FROM queries 
-        ORDER BY id
-    """)
-    
-    for row in cur.fetchall():
-        qid, query, brand, enabled, created, updated = row
-        status = "✅ ACTIVA" if enabled else "❌ DESHABILITADA"
-        print(f"\nID: {qid} | {status}")
-        print(f"   Query: \"{query}\"")
-        print(f"   Marca: {brand}")
-        print(f"   Creada: {created}")
-        print(f"   Actualizada: {updated}")
+    try:
+        results = fetch_fn(query_text)
+        response_text = ""
+        source_title = None
+        source_url = None
 
-# ===============================================
-# 3. MENCIONES - TODAS CON DETALLES COMPLETOS
-# ===============================================
-print("\n\n💬 TODAS LAS MENCIONES:")
-print("-" * 40)
-
-cur.execute("SELECT COUNT(*) FROM mentions")
-total_mentions = cur.fetchone()[0]
-print(f"📊 Total de menciones: {total_mentions}")
-
-if total_mentions > 0:
-    cur.execute("""
-        SELECT 
-            m.id,
-            m.query_id,
-            m.url,
-            m.title,
-            m.snippet,
-            m.response,
-            m.source,
-            m.engine,
-            m.domain,
-            m.sentiment,
-            m.created_at,
-            q.query,
-            q.brand
-        FROM mentions m
-        LEFT JOIN queries q ON m.query_id = q.id
-        ORDER BY m.created_at DESC
-    """)
-    
-    for i, row in enumerate(cur.fetchall(), 1):
-        mid, qid, url, title, snippet, response, source, engine, domain, sentiment, created, query, brand = row
-        
-        print(f"\n{'='*60}")
-        print(f"📝 MENCIÓN #{i} (ID: {mid})")
-        print(f"{'='*60}")
-        print(f"🔗 Query ID: {qid} | Marca: {brand}")
-        print(f"📱 Query: \"{query}\"")
-        print(f"🌐 URL: {url}")
-        print(f"📰 Título: {title}")
-        print(f"📄 Snippet: {snippet}")
-        print(f"🤖 Respuesta IA: {response}")
-        print(f"📡 Fuente: {source} | Motor: {engine}")
-        print(f"🏠 Dominio: {domain}")
-        print(f"😊 Sentiment: {sentiment}")
-        print(f"🕐 Creada: {created}")
-
-# ===============================================
-# 4. INSIGHTS - TODOS CON PAYLOAD COMPLETO
-# ===============================================
-print("\n\n🧠 TODOS LOS INSIGHTS:")
-print("-" * 40)
-
-cur.execute("SELECT COUNT(*) FROM insights")
-total_insights = cur.fetchone()[0]
-print(f"📊 Total de insights: {total_insights}")
-
-if total_insights > 0:
-    cur.execute("""
-        SELECT 
-            i.id,
-            i.query_id,
-            i.payload,
-            i.created_at,
-            i.updated_at,
-            q.query,
-            q.brand
-        FROM insights i
-        LEFT JOIN queries q ON i.query_id = q.id
-        ORDER BY i.created_at DESC
-    """)
-    
-    for i, row in enumerate(cur.fetchall(), 1):
-        iid, qid, payload, created, updated, query, brand = row
-        
-        print(f"\n{'='*60}")
-        print(f"🧠 INSIGHT #{i} (ID: {iid})")
-        print(f"{'='*60}")
-        print(f"🔗 Query ID: {qid} | Marca: {brand}")
-        print(f"📱 Query: \"{query}\"")
-        print(f"🕐 Creado: {created}")
-        print(f"🕐 Actualizado: {updated}")
-        
-        if payload:
-            print(f"\n📋 CONTENIDO DEL INSIGHT:")
-            
-            # Mostrar cada categoría del payload
-            for category in ['opportunities', 'risks', 'trends', 'calls_to_action', 'summary']:
-                if category in payload and payload[category]:
-                    items = payload[category]
-                    if isinstance(items, list):
-                        print(f"\n   🎯 {category.upper()} ({len(items)} items):")
-                        for j, item in enumerate(items, 1):
-                            print(f"      {j}. {item}")
-                    else:
-                        print(f"\n   🎯 {category.upper()}: {items}")
-            
-            # Mostrar cualquier otra clave en el payload
-            other_keys = [k for k in payload.keys() if k not in ['opportunities', 'risks', 'trends', 'calls_to_action', 'summary']]
-            if other_keys:
-                print(f"\n   📦 OTROS DATOS:")
-                for key in other_keys:
-                    print(f"      {key}: {payload[key]}")
+        if name == "serpapi":
+            if not isinstance(results, list):
+                logging.warning("⚠️ serpapi no devolvió una lista, probablemente por un error de API. Saltando.")
+                return
+            if not results:
+                logging.warning("⚠️ serpapi sin resultados para: %s", query_text)
+                return
+            response_text = "\n\n".join([f"Fuente: {r.get('source', '')}\nTítulo: {r.get('title', '')}\nResumen: {r.get('snippet', '')}" for r in results[:3]])
+            source_title = results[0].get("title")
+            source_url = results[0].get("link")
         else:
-            print("   ⚠️ Sin payload")
+            response_text = results
 
-# ===============================================
-# 5. ESTADÍSTICAS AVANZADAS
-# ===============================================
-print("\n\n📈 ESTADÍSTICAS AVANZADAS:")
-print("-" * 40)
+        if not response_text or not isinstance(response_text, str):
+            logging.warning("⚠️ El motor %s no devolvió una respuesta de texto válida para: %s", name, query_text)
+            return
 
-# Por query
-print("\n🎯 ESTADÍSTICAS POR QUERY:")
-cur.execute("""
-    SELECT 
-        q.id,
-        q.query,
-        q.brand,
-        COUNT(m.id) as total_mentions,
-        COUNT(CASE WHEN m.sentiment > 0.2 THEN 1 END) as positive_mentions,
-        COUNT(CASE WHEN m.sentiment < -0.2 THEN 1 END) as negative_mentions,
-        AVG(m.sentiment) as avg_sentiment,
-        MIN(m.created_at) as first_mention,
-        MAX(m.created_at) as last_mention
-    FROM queries q
-    LEFT JOIN mentions m ON q.id = m.query_id
-    GROUP BY q.id, q.query, q.brand
-    ORDER BY total_mentions DESC
-""")
+        sentiment, emotion, confidence = analyze_sentiment(response_text)
+        summary, key_topics = summarize_and_extract_topics(response_text)
+        
+        insight_id = None
+        if name in {"gpt-4", "pplx-7b-chat"} or (name == "serpapi" and len(response_text) > 300):
+            insights_payload = extract_insights(response_text)
+            if insights_payload:
+                insight_id = insert_insights(cur, query_id, insights_payload)
 
-for row in cur.fetchall():
-    qid, query, brand, total, positive, negative, avg_sent, first, last = row
-    visibility = (positive / total * 100) if total > 0 else 0
-    
-    print(f"\n   📊 Query ID {qid}: \"{query[:50]}...\"")
-    print(f"      Marca: {brand}")
-    print(f"      Total menciones: {total}")
-    print(f"      Positivas: {positive} | Negativas: {negative}")
-    print(f"      Visibility: {visibility:.1f}%")
-    print(f"      Sentiment promedio: {avg_sent:.3f}" if avg_sent else "      Sentiment promedio: N/A")
-    print(f"      Primera mención: {first}")
-    print(f"      Última mención: {last}")
+        mention_data = {
+            "query_id": query_id, "engine": name, "source": name.lower(), "response": response_text,
+            "sentiment": sentiment, "emotion": emotion, "confidence": confidence,
+            "source_title": source_title, "source_url": source_url, "created_at": datetime.now(timezone.utc),
+            "summary": summary, "key_topics": key_topics, "insight_id": insight_id
+        }
 
-# Por dominio (usando source en lugar de domain)
-print("\n🌐 ESTADÍSTICAS POR FUENTE:")
-cur.execute("""
-    SELECT 
-        source,
-        COUNT(*) as mentions_count,
-        AVG(sentiment) as avg_sentiment,
-        COUNT(CASE WHEN sentiment > 0.2 THEN 1 END) as positive_count
-    FROM mentions 
-    WHERE source IS NOT NULL
-    GROUP BY source
-    ORDER BY mentions_count DESC
-    LIMIT 10
-""")
+        mention_id = insert_mention(cur, mention_data)
 
-for row in cur.fetchall():
-    source, count, avg_sent, positive = row
-    print(f"   🏠 {source}: {count} menciones | Sentiment: {avg_sent:.3f} | Positivas: {positive}")
+        if sentiment < SENTIMENT_THRESHOLD:
+            send_slack_alert(query_text, sentiment, summary)
 
-# Por motor de búsqueda
-print("\n🔍 ESTADÍSTICAS POR MOTOR:")
-cur.execute("""
-    SELECT 
-        engine,
-        COUNT(*) as mentions_count,
-        AVG(sentiment) as avg_sentiment
-    FROM mentions 
-    WHERE engine IS NOT NULL
-    GROUP BY engine
-    ORDER BY mentions_count DESC
-""")
+        logging.info("✓ %s guardado (mention_id=%s, insight_id=%s)", name, mention_id, insight_id)
 
-for row in cur.fetchall():
-    engine, count, avg_sent = row
-    print(f"   🤖 {engine}: {count} menciones | Sentiment promedio: {avg_sent:.3f}")
+    except Exception as exc:
+        logging.exception("❌ %s error: %s", name, exc)
 
-# Evolución temporal
-print("\n📅 EVOLUCIÓN TEMPORAL (últimos 7 días):")
-cur.execute("""
-    SELECT 
-        DATE(created_at) as day,
-        COUNT(*) as mentions_count,
-        AVG(sentiment) as avg_sentiment,
-        COUNT(CASE WHEN sentiment > 0.2 THEN 1 END) as positive_count
-    FROM mentions 
-    WHERE created_at >= NOW() - INTERVAL '7 days'
-    GROUP BY DATE(created_at)
-    ORDER BY day DESC
-""")
+def main(loop_once: bool = True, sleep_seconds: int = 6 * 3600):
+    logging.info("🔄 Polling service started")
+    while True:
+        with psycopg2.connect(**DB_CFG) as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT id, query FROM queries WHERE enabled = TRUE")
+                for query_id, query_text in cur.fetchall():
+                    print(f"\n🔍 Buscando menciones para query: {query_text}")
+                    for name, fn in (
+                        ("gpt-4", lambda q: fetch_response(q, model="gpt-4o-mini")),
+                        ("pplx-7b-chat", fetch_perplexity_response),
+                        ("serpapi", fetch_serp_response),
+                    ):
+                        run_engine(name, fn, query_id, query_text, cur)
+                conn.commit()
 
-for row in cur.fetchall():
-    day, count, avg_sent, positive = row
-    print(f"   📅 {day}: {count} menciones | Sentiment: {avg_sent:.3f} | Positivas: {positive}")
+        logging.info("🛑 Polling cycle finished")
+        if loop_once:
+            break
+        time.sleep(sleep_seconds)
 
-# ===============================================
-# 6. VERIFICACIONES DE INTEGRIDAD
-# ===============================================
-print("\n\n🔍 VERIFICACIONES DE INTEGRIDAD:")
-print("-" * 40)
-
-# Menciones sin query
-cur.execute("SELECT COUNT(*) FROM mentions WHERE query_id NOT IN (SELECT id FROM queries)")
-orphan_mentions = cur.fetchone()[0]
-print(f"⚠️ Menciones huérfanas (sin query): {orphan_mentions}")
-
-# Insights sin query
-cur.execute("SELECT COUNT(*) FROM insights WHERE query_id NOT IN (SELECT id FROM queries)")
-orphan_insights = cur.fetchone()[0]
-print(f"⚠️ Insights huérfanos (sin query): {orphan_insights}")
-
-# Menciones sin respuesta
-cur.execute("SELECT COUNT(*) FROM mentions WHERE response IS NULL OR response = ''")
-no_response = cur.fetchone()[0]
-print(f"⚠️ Menciones sin respuesta IA: {no_response}")
-
-# Menciones sin sentiment
-cur.execute("SELECT COUNT(*) FROM mentions WHERE sentiment IS NULL")
-no_sentiment = cur.fetchone()[0]
-print(f"⚠️ Menciones sin sentiment: {no_sentiment}")
-
-# Insights sin payload
-cur.execute("SELECT COUNT(*) FROM insights WHERE payload IS NULL")
-no_payload = cur.fetchone()[0]
-print(f"⚠️ Insights sin payload: {no_payload}")
-
-# ===============================================
-# 7. RESUMEN FINAL
-# ===============================================
-print("\n\n🎯 RESUMEN FINAL:")
-print("-" * 40)
-
-cur.execute("SELECT COUNT(*) FROM queries WHERE enabled = true")
-active_queries = cur.fetchone()[0]
-
-cur.execute("SELECT COUNT(*) FROM mentions WHERE created_at >= NOW() - INTERVAL '24 hours'")
-recent_mentions = cur.fetchone()[0]
-
-cur.execute("SELECT COUNT(*) FROM insights WHERE created_at >= NOW() - INTERVAL '24 hours'")
-recent_insights = cur.fetchone()[0]
-
-cur.execute("SELECT AVG(sentiment) FROM mentions WHERE sentiment IS NOT NULL")
-overall_sentiment = cur.fetchone()[0]
-
-print(f"📊 Queries activas: {active_queries} de {total_queries}")
-print(f"💬 Total menciones: {total_mentions}")
-print(f"🧠 Total insights: {total_insights}")
-print(f"🕐 Menciones últimas 24h: {recent_mentions}")
-print(f"🕐 Insights últimos 24h: {recent_insights}")
-print(f"😊 Sentiment general: {overall_sentiment:.3f}" if overall_sentiment else "😊 Sentiment general: N/A")
-
-# Calcular visibility general
-cur.execute("SELECT COUNT(*) FROM mentions WHERE sentiment > 0.2")
-positive_total = cur.fetchone()[0]
-if total_mentions > 0:
-    overall_visibility = (positive_total / total_mentions) * 100
-    print(f"👁️ Visibility general: {overall_visibility:.1f}%")
-
-print(f"\n✅ DUMP COMPLETADO - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-
-cur.close()
-conn.close()
+if __name__ == "__main__":
+    main(loop_once=True)

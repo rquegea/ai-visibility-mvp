@@ -2,10 +2,6 @@ import openai
 import os
 import json
 import logging
-from dotenv import load_dotenv
-
-# Cargar variables de entorno
-load_dotenv()
 
 # Configurar logging para debugging
 logging.basicConfig(level=logging.INFO)
@@ -18,10 +14,11 @@ def analyze_sentiment(text):
     """
     Versión mejorada con mejor manejo de errores y logging
     """
-    prompt = f"""Analiza el siguiente texto y devuelve el resultado en formato JSON exacto.
+    prompt = f"""
+Analiza el siguiente texto y devuelve el resultado en formato JSON exacto.
 
 Texto a analizar:
-{text}
+"""{text}"""
 
 Responde SOLO con este formato JSON (sin texto adicional):
 {{"sentiment": 0.8, "emotion": "alegría", "confidence": 0.9}}
@@ -29,7 +26,8 @@ Responde SOLO con este formato JSON (sin texto adicional):
 Donde:
 - sentiment: número entre -1 (muy negativo) y 1 (muy positivo)  
 - emotion: alegría, tristeza, enojo, miedo, sorpresa, neutral
-- confidence: número entre 0 y 1"""
+- confidence: número entre 0 y 1
+"""
     
     try:
         logger.info(f"Analizando sentiment para texto de {len(text)} caracteres")
@@ -46,8 +44,8 @@ Donde:
         
         # Limpiar respuesta (remover markdown si existe)
         if content.startswith('```'):
-            lines = content.split('\n')
-            content = '\n'.join(lines[1:-1])
+            content = content.split('\n')[1:-1]
+            content = '\n'.join(content)
         
         data = json.loads(content)
         
